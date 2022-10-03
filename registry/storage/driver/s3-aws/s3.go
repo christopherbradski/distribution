@@ -14,7 +14,9 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -103,6 +105,8 @@ type DriverParameters struct {
 	ForcePathStyle              bool
 	Encrypt                     bool
 	KeyID                       string
+	SSECustomerKeyBase64        string
+	SSECustomerAlgorithm        string
 	Secure                      bool
 	SkipVerify                  bool
 	V4Auth                      bool
@@ -158,6 +162,8 @@ type driver struct {
 	ChunkSize                   int64
 	Encrypt                     bool
 	KeyID                       string
+	SSECustomerKey              []byte
+	SSECustomerAlgorithm        string
 	MultipartCopyChunkSize      int64
 	MultipartCopyMaxConcurrency int64
 	MultipartCopyThresholdSize  int64
@@ -304,6 +310,15 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		return nil, fmt.Errorf("the v4auth parameter should be a boolean")
 	}
 
+	sseCustomerKeyBase64 := parameters["ssecustomerkey"]
+	if sseCustomerKeyBase64 == nil {
+		sseCustomerKeyBase64 = ""
+	}
+	sseCustomerAlgorithm := parameters["ssecustomeralgorithm"]
+	if sseCustomerAlgorithm == nil {
+		sseCustomerAlgorithm = ""
+	}
+
 	keyID := parameters["keyid"]
 	if keyID == nil {
 		keyID = ""
@@ -445,6 +460,8 @@ func FromParameters(parameters map[string]interface{}) (*Driver, error) {
 		forcePathStyleBool,
 		encryptBool,
 		fmt.Sprint(keyID),
+		fmt.Sprint(sseCustomerKeyBase64),
+		fmt.Sprint(sseCustomerAlgorithm),
 		secureBool,
 		skipVerifyBool,
 		v4Bool,
@@ -544,6 +561,17 @@ func New(params DriverParameters) (*Driver, error) {
 		}
 	}
 
+	sseCustomerAlgorithm := params.SSECustomerAlgorithm
+
+	var sseCustomerKey []byte
+	if params.Encrypt && params.SSECustomerKeyBase64 != "" {
+		customerKey, err := base64.StdEncoding.DecodeString(params.SSECustomerKeyBase64)
+		if err != nil {
+			return nil, fmt.Errorf("unable to decode customer key: %s", err)
+		}
+		sseCustomerKey = customerKey
+	}
+
 	sess, err := session.NewSession(awsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new session with aws config: %v", err)
@@ -576,6 +604,8 @@ func New(params DriverParameters) (*Driver, error) {
 		ChunkSize:                   params.ChunkSize,
 		Encrypt:                     params.Encrypt,
 		KeyID:                       params.KeyID,
+		SSECustomerKey:              sseCustomerKey,
+		SSECustomerAlgorithm:        sseCustomerAlgorithm,
 		MultipartCopyChunkSize:      params.MultipartCopyChunkSize,
 		MultipartCopyMaxConcurrency: params.MultipartCopyMaxConcurrency,
 		MultipartCopyThresholdSize:  params.MultipartCopyThresholdSize,
@@ -611,27 +641,33 @@ func (d *driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 
 // PutContent stores the []byte content at a location designated by "path".
 func (d *driver) PutContent(ctx context.Context, path string, contents []byte) error {
-	_, err := d.S3.PutObject(&s3.PutObjectInput{
-		Bucket:               aws.String(d.Bucket),
-		Key:                  aws.String(d.s3Path(path)),
-		ContentType:          d.getContentType(),
-		ACL:                  d.getACL(),
-		ServerSideEncryption: d.getEncryptionMode(),
-		SSEKMSKeyId:          d.getSSEKMSKeyID(),
-		StorageClass:         d.getStorageClass(),
-		Body:                 bytes.NewReader(contents),
-	})
+	opts := &s3.PutObjectInput{
+		Bucket:       aws.String(d.Bucket),
+		Key:          aws.String(d.s3Path(path)),
+		ContentType:  d.getContentType(),
+		ACL:          d.getACL(),
+		StorageClass: d.getStorageClass(),
+		Body:         bytes.NewReader(contents),
+	}
+
+	setEncryptionOptions(d, opts)
+
+	_, err := d.S3.PutObject(opts)
 	return parseError(path, err)
 }
 
 // Reader retrieves an io.ReadCloser for the content stored at "path" with a
 // given byte offset.
 func (d *driver) Reader(ctx context.Context, path string, offset int64) (io.ReadCloser, error) {
-	resp, err := d.S3.GetObject(&s3.GetObjectInput{
+	opts := &s3.GetObjectInput{
 		Bucket: aws.String(d.Bucket),
 		Key:    aws.String(d.s3Path(path)),
 		Range:  aws.String("bytes=" + strconv.FormatInt(offset, 10) + "-"),
-	})
+	}
+
+	setEncryptionOptions(d, opts)
+
+	resp, err := d.S3.GetObject(opts)
 
 	if err != nil {
 		if s3Err, ok := err.(awserr.Error); ok && s3Err.Code() == "InvalidRange" {
@@ -649,15 +685,17 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 	key := d.s3Path(path)
 	if !appendParam {
 		// TODO (brianbland): cancel other uploads at this path
-		resp, err := d.S3.CreateMultipartUpload(&s3.CreateMultipartUploadInput{
-			Bucket:               aws.String(d.Bucket),
-			Key:                  aws.String(key),
-			ContentType:          d.getContentType(),
-			ACL:                  d.getACL(),
-			ServerSideEncryption: d.getEncryptionMode(),
-			SSEKMSKeyId:          d.getSSEKMSKeyID(),
-			StorageClass:         d.getStorageClass(),
-		})
+		opts := &s3.CreateMultipartUploadInput{
+			Bucket:       aws.String(d.Bucket),
+			Key:          aws.String(key),
+			ContentType:  d.getContentType(),
+			ACL:          d.getACL(),
+			StorageClass: d.getStorageClass(),
+		}
+
+		setEncryptionOptions(d, opts)
+
+		resp, err := d.S3.CreateMultipartUpload(opts)
 		if err != nil {
 			return nil, err
 		}
@@ -687,22 +725,28 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 				continue
 			}
 
-			partsList, err := d.S3.ListParts(&s3.ListPartsInput{
+			listPartsInput := &s3.ListPartsInput{
 				Bucket:   aws.String(d.Bucket),
 				Key:      aws.String(key),
 				UploadId: multi.UploadId,
-			})
+			}
+			// Once more the API accepts SSECustomerKey and SSECustomerAlgorithm but they seem to not only
+			// not be needed, they break some S3 compatible storages (like Backblaze B2)
+			// setEncryptionOptions(d, listPartsInput)
+			partsList, err := d.S3.ListParts(listPartsInput)
 			if err != nil {
 				return nil, parseError(path, err)
 			}
 			allParts = append(allParts, partsList.Parts...)
 			for *resp.IsTruncated {
-				partsList, err = d.S3.ListParts(&s3.ListPartsInput{
+				curListPartsInput := &s3.ListPartsInput{
 					Bucket:           aws.String(d.Bucket),
 					Key:              aws.String(key),
 					UploadId:         multi.UploadId,
 					PartNumberMarker: partsList.NextPartNumberMarker,
-				})
+				}
+				// setEncryptionOptions(d, curListPartsInput)
+				partsList, err = d.S3.ListParts(curListPartsInput)
 				if err != nil {
 					return nil, parseError(path, err)
 				}
@@ -845,31 +889,32 @@ func (d *driver) copy(ctx context.Context, sourcePath string, destPath string) e
 	}
 
 	if fileInfo.Size() <= d.MultipartCopyThresholdSize {
-		_, err := d.S3.CopyObject(&s3.CopyObjectInput{
-			Bucket:               aws.String(d.Bucket),
-			Key:                  aws.String(d.s3Path(destPath)),
-			ContentType:          d.getContentType(),
-			ACL:                  d.getACL(),
-			ServerSideEncryption: d.getEncryptionMode(),
-			SSEKMSKeyId:          d.getSSEKMSKeyID(),
-			StorageClass:         d.getStorageClass(),
-			CopySource:           aws.String(d.Bucket + "/" + d.s3Path(sourcePath)),
-		})
+		copyObjectInput := &s3.CopyObjectInput{
+			Bucket:       aws.String(d.Bucket),
+			Key:          aws.String(d.s3Path(destPath)),
+			ContentType:  d.getContentType(),
+			ACL:          d.getACL(),
+			StorageClass: d.getStorageClass(),
+			CopySource:   aws.String(d.Bucket + "/" + d.s3Path(sourcePath)),
+		}
+		setEncryptionOptionsForCopy(d, copyObjectInput)
+		_, err := d.S3.CopyObject(copyObjectInput)
+
 		if err != nil {
 			return parseError(sourcePath, err)
 		}
 		return nil
 	}
 
-	createResp, err := d.S3.CreateMultipartUpload(&s3.CreateMultipartUploadInput{
-		Bucket:               aws.String(d.Bucket),
-		Key:                  aws.String(d.s3Path(destPath)),
-		ContentType:          d.getContentType(),
-		ACL:                  d.getACL(),
-		SSEKMSKeyId:          d.getSSEKMSKeyID(),
-		ServerSideEncryption: d.getEncryptionMode(),
-		StorageClass:         d.getStorageClass(),
-	})
+	createMultipartUploadInput := &s3.CreateMultipartUploadInput{
+		Bucket:       aws.String(d.Bucket),
+		Key:          aws.String(d.s3Path(destPath)),
+		ContentType:  d.getContentType(),
+		ACL:          d.getACL(),
+		StorageClass: d.getStorageClass(),
+	}
+	setEncryptionOptions(d, createMultipartUploadInput)
+	createResp, err := d.S3.CreateMultipartUpload(createMultipartUploadInput)
 	if err != nil {
 		return err
 	}
@@ -888,14 +933,16 @@ func (d *driver) copy(ctx context.Context, sourcePath string, destPath string) e
 			if lastByte >= fileInfo.Size() {
 				lastByte = fileInfo.Size() - 1
 			}
-			uploadResp, err := d.S3.UploadPartCopy(&s3.UploadPartCopyInput{
+			uploadPartCopyInput := &s3.UploadPartCopyInput{
 				Bucket:          aws.String(d.Bucket),
 				CopySource:      aws.String(d.Bucket + "/" + d.s3Path(sourcePath)),
 				Key:             aws.String(d.s3Path(destPath)),
 				PartNumber:      aws.Int64(i + 1),
 				UploadId:        createResp.UploadId,
 				CopySourceRange: aws.String(fmt.Sprintf("bytes=%d-%d", firstByte, lastByte)),
-			})
+			}
+			setEncryptionOptionsForCopy(d, uploadPartCopyInput)
+			uploadResp, err := d.S3.UploadPartCopy(uploadPartCopyInput)
 			if err == nil {
 				completedParts[i] = &s3.CompletedPart{
 					ETag:       uploadResp.CopyPartResult.ETag,
@@ -913,13 +960,15 @@ func (d *driver) copy(ctx context.Context, sourcePath string, destPath string) e
 			return err
 		}
 	}
-
-	_, err = d.S3.CompleteMultipartUpload(&s3.CompleteMultipartUploadInput{
+	completeMultipartUploadInput := &s3.CompleteMultipartUploadInput{
 		Bucket:          aws.String(d.Bucket),
 		Key:             aws.String(d.s3Path(destPath)),
 		UploadId:        createResp.UploadId,
 		MultipartUpload: &s3.CompletedMultipartUpload{Parts: completedParts},
-	})
+	}
+	// Again, looks like SSE options should be set but they break things
+	// setEncryptionOptions(d, completeMultipartUploadInput)
+	_, err = d.S3.CompleteMultipartUpload(completeMultipartUploadInput)
 	return err
 }
 
@@ -1027,15 +1076,19 @@ func (d *driver) URLFor(ctx context.Context, path string, options map[string]int
 
 	switch methodString {
 	case "GET":
-		req, _ = d.S3.GetObjectRequest(&s3.GetObjectInput{
+		getInput := &s3.GetObjectInput{
 			Bucket: aws.String(d.Bucket),
 			Key:    aws.String(d.s3Path(path)),
-		})
+		}
+		setEncryptionOptions(d, getInput)
+		req, _ = d.S3.GetObjectRequest(getInput)
 	case "HEAD":
-		req, _ = d.S3.HeadObjectRequest(&s3.HeadObjectInput{
+		headInput := &s3.HeadObjectInput{
 			Bucket: aws.String(d.Bucket),
 			Key:    aws.String(d.s3Path(path)),
-		})
+		}
+		setEncryptionOptions(d, headInput)
+		req, _ = d.S3.HeadObjectRequest(headInput)
 	default:
 		panic("unreachable")
 	}
@@ -1201,6 +1254,92 @@ func reverse(s []string) {
 	}
 }
 
+// Alias for any struct that needs SSE encryption options
+type APICallInputsAlias interface {
+	s3.CompleteMultipartUploadInput |
+		s3.CopyObjectInput |
+		s3.CreateMultipartUploadInput |
+		s3.GetObjectInput |
+		s3.HeadObjectInput |
+		s3.ListPartsInput |
+		s3.PutObjectInput |
+		s3.UploadPartCopyInput |
+		s3.UploadPartInput
+}
+
+// Call this on any options struct which is doing an S3 read or write operation in order to
+// set the appropriate encryption options.
+func setEncryptionOptions[O APICallInputsAlias](d *driver, opts *O) {
+	if !d.Encrypt {
+		return
+	}
+
+	kmsKey := d.getSSEKMSKeyID()
+	customerKey := d.getSSECustomerKey()
+
+	reflectElem := reflect.ValueOf(opts).Elem()
+
+	if kmsKey == nil && customerKey != nil {
+		// SSE-C (server-side encryption with customer-provided keys)
+		// - it's worth noting that these need to be set on basically every
+		// read or write operation because with a customer-provided key
+		// s3 can't read the data at all without knowing the key
+		reflectElem.FieldByName("SSECustomerKey").Set(reflect.ValueOf(customerKey))
+		reflectElem.FieldByName("SSECustomerKeyMD5").Set(reflect.ValueOf(d.getSSECustomerKeyMD5()))
+		reflectElem.FieldByName("SSECustomerAlgorithm").Set(reflect.ValueOf(d.getSSECustomerAlgorithm()))
+	} else {
+		// SSE-S3 (server-side encryption with Amazon S3-managed keys) or KMS
+		// Note that many options structs in S3 don't need to set these options, so
+		// we need to check if the struct contains them before trying to set them
+		// (for read operations it already knows to use the server or kms-managed
+		// keys, so we don't need to set them)
+
+		sseField := reflect.ValueOf(opts).Elem().FieldByName("ServerSideEncryption")
+		if sseField.IsValid() {
+			// If ServerSideEncryption is a valid field on this struct them SSEKMSKeyId
+			// should be as well
+			sseField.Set(reflect.ValueOf(d.getEncryptionMode()))
+			if kmsKey != nil {
+				reflectElem.FieldByName("SSEKMSKeyId").Set(reflect.ValueOf(kmsKey))
+			}
+		}
+	}
+}
+
+type APICopyCallInputsAlias interface {
+	s3.CopyObjectInput |
+		s3.UploadPartCopyInput
+}
+
+// When doing a copy operation there are some extra options that need to be set;
+// for the sake of keeping them all in one place we'll se it using this
+func setEncryptionOptionsForCopy[O APICopyCallInputsAlias](d *driver, opts *O) {
+	if !d.Encrypt {
+		return
+	}
+
+	kmsKey := d.getSSEKMSKeyID()
+	customerKey := d.getSSECustomerKey()
+
+	reflectElem := reflect.ValueOf(opts).Elem()
+
+	if kmsKey == nil && customerKey != nil {
+		// SSE-C (server-side encryption with customer-provided keys)
+		// - it's worth noting that these need to be set on basically every
+		// read or write operation because with a customer-provided key
+		// s3 can't read the data at all without knowing the key
+		reflectElem.FieldByName("SSECustomerKey").Set(reflect.ValueOf(customerKey))
+		reflectElem.FieldByName("CopySourceSSECustomerKey").Set(reflect.ValueOf(customerKey))
+		reflectElem.FieldByName("SSECustomerKeyMD5").Set(reflect.ValueOf(d.getSSECustomerKeyMD5()))
+		reflectElem.FieldByName("CopySourceSSECustomerKeyMD5").Set(reflect.ValueOf(d.getSSECustomerKeyMD5()))
+		reflectElem.FieldByName("SSECustomerAlgorithm").Set(reflect.ValueOf(d.getSSECustomerAlgorithm()))
+		reflectElem.FieldByName("CopySourceSSECustomerAlgorithm").Set(reflect.ValueOf(d.getSSECustomerAlgorithm()))
+	} else {
+		// For other types we do the same as any other input, so:
+		setEncryptionOptions(d, opts)
+	}
+}
+
 func (d *driver) s3Path(path string) string {
 	return strings.TrimLeft(strings.TrimRight(d.RootDirectory, "/")+path, "/")
 }
@@ -1226,6 +1365,28 @@ func (d *driver) getEncryptionMode() *string {
 		return aws.String("AES256")
 	}
 	return aws.String("aws:kms")
+}
+func (d *driver) getSSECustomerKey() *string {
+	if d.SSECustomerKey == nil {
+		return nil
+	}
+	return aws.String(string(d.SSECustomerKey[:]))
+}
+func (d *driver) getSSECustomerKeyMD5() *string {
+	if d.SSECustomerKey == nil {
+		return nil
+	}
+	keyMD5 := md5.Sum(d.SSECustomerKey[:])
+	return aws.String(base64.StdEncoding.EncodeToString(keyMD5[:]))
+}
+func (d *driver) getSSECustomerAlgorithm() *string {
+	if d.SSECustomerKey == nil {
+		return nil
+	} else if d.SSECustomerAlgorithm == "" {
+		return aws.String("AES256")
+	}
+
+	return aws.String(d.SSECustomerAlgorithm)
 }
 
 func (d *driver) getSSEKMSKeyID() *string {
@@ -1309,14 +1470,16 @@ func (w *writer) Write(p []byte) (int, error) {
 
 		sort.Sort(completedUploadedParts)
 
-		_, err := w.driver.S3.CompleteMultipartUpload(&s3.CompleteMultipartUploadInput{
+		uploadInput := &s3.CompleteMultipartUploadInput{
 			Bucket:   aws.String(w.driver.Bucket),
 			Key:      aws.String(w.key),
 			UploadId: aws.String(w.uploadID),
 			MultipartUpload: &s3.CompletedMultipartUpload{
 				Parts: completedUploadedParts,
 			},
-		})
+		}
+		setEncryptionOptions(w.driver, uploadInput)
+		_, err := w.driver.S3.CompleteMultipartUpload(uploadInput)
 		if err != nil {
 			w.driver.S3.AbortMultipartUpload(&s3.AbortMultipartUploadInput{
 				Bucket:   aws.String(w.driver.Bucket),
@@ -1326,14 +1489,15 @@ func (w *writer) Write(p []byte) (int, error) {
 			return 0, err
 		}
 
-		resp, err := w.driver.S3.CreateMultipartUpload(&s3.CreateMultipartUploadInput{
-			Bucket:               aws.String(w.driver.Bucket),
-			Key:                  aws.String(w.key),
-			ContentType:          w.driver.getContentType(),
-			ACL:                  w.driver.getACL(),
-			ServerSideEncryption: w.driver.getEncryptionMode(),
-			StorageClass:         w.driver.getStorageClass(),
-		})
+		createUploadInput := &s3.CreateMultipartUploadInput{
+			Bucket:       aws.String(w.driver.Bucket),
+			Key:          aws.String(w.key),
+			ContentType:  w.driver.getContentType(),
+			ACL:          w.driver.getACL(),
+			StorageClass: w.driver.getStorageClass(),
+		}
+		setEncryptionOptions(w.driver, createUploadInput)
+		resp, err := w.driver.S3.CreateMultipartUpload(createUploadInput)
 		if err != nil {
 			return 0, err
 		}
@@ -1342,10 +1506,12 @@ func (w *writer) Write(p []byte) (int, error) {
 		// If the entire written file is smaller than minChunkSize, we need to make
 		// a new part from scratch :double sad face:
 		if w.size < minChunkSize {
-			resp, err := w.driver.S3.GetObject(&s3.GetObjectInput{
+			curGetObjectInput := &s3.GetObjectInput{
 				Bucket: aws.String(w.driver.Bucket),
 				Key:    aws.String(w.key),
-			})
+			}
+			setEncryptionOptions(w.driver, curGetObjectInput)
+			resp, err := w.driver.S3.GetObject(curGetObjectInput)
 			if err != nil {
 				return 0, err
 			}
@@ -1357,13 +1523,15 @@ func (w *writer) Write(p []byte) (int, error) {
 			}
 		} else {
 			// Otherwise we can use the old file as the new first part
-			copyPartResp, err := w.driver.S3.UploadPartCopy(&s3.UploadPartCopyInput{
+			uploadPartCopyInput := &s3.UploadPartCopyInput{
 				Bucket:     aws.String(w.driver.Bucket),
 				CopySource: aws.String(w.driver.Bucket + "/" + w.key),
 				Key:        aws.String(w.key),
 				PartNumber: aws.Int64(1),
 				UploadId:   resp.UploadId,
-			})
+			}
+			setEncryptionOptions(w.driver, uploadPartCopyInput)
+			copyPartResp, err := w.driver.S3.UploadPartCopy(uploadPartCopyInput)
 			if err != nil {
 				return 0, err
 			}
@@ -1465,14 +1633,21 @@ func (w *writer) Commit() error {
 
 	sort.Sort(completedUploadedParts)
 
-	_, err = w.driver.S3.CompleteMultipartUpload(&s3.CompleteMultipartUploadInput{
+	completeUploadInput := &s3.CompleteMultipartUploadInput{
 		Bucket:   aws.String(w.driver.Bucket),
 		Key:      aws.String(w.key),
 		UploadId: aws.String(w.uploadID),
 		MultipartUpload: &s3.CompletedMultipartUpload{
 			Parts: completedUploadedParts,
 		},
-	})
+	}
+	// It seems (even to me) like this needs the SSE-C options set; however, when
+	// I set them some S3 compatible storages (BackBlaze B2) fail to complete the
+	// upload. It does not seem to need them in order to complete them, so
+	// I'm leaving this here for now so nobody tries to add it without background.
+	// setEncryptionOptions(w.driver, completeUploadInput)
+
+	_, err = w.driver.S3.CompleteMultipartUpload(completeUploadInput)
 	if err != nil {
 		w.driver.S3.AbortMultipartUpload(&s3.AbortMultipartUploadInput{
 			Bucket:   aws.String(w.driver.Bucket),
@@ -1499,13 +1674,15 @@ func (w *writer) flushPart() error {
 	}
 
 	partNumber := aws.Int64(int64(len(w.parts) + 1))
-	resp, err := w.driver.S3.UploadPart(&s3.UploadPartInput{
+	uploadPartInput := &s3.UploadPartInput{
 		Bucket:     aws.String(w.driver.Bucket),
 		Key:        aws.String(w.key),
 		PartNumber: partNumber,
 		UploadId:   aws.String(w.uploadID),
 		Body:       bytes.NewReader(w.readyPart),
-	})
+	}
+	setEncryptionOptions(w.driver, uploadPartInput)
+	resp, err := w.driver.S3.UploadPart(uploadPartInput)
 	if err != nil {
 		return err
 	}

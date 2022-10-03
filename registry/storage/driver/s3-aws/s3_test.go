@@ -36,6 +36,8 @@ func init() {
 	bucket := os.Getenv("S3_BUCKET")
 	encrypt := os.Getenv("S3_ENCRYPT")
 	keyID := os.Getenv("S3_KEY_ID")
+	sseCustomerKey := os.Getenv("S3_CUSTOMER_KEY")
+	sseCustomerAlgorithm := os.Getenv("S3_CUSTOMER_ALGORITHM")
 	secure := os.Getenv("S3_SECURE")
 	skipVerify := os.Getenv("S3_SKIP_VERIFY")
 	v4Auth := os.Getenv("S3_V4_AUTH")
@@ -123,6 +125,8 @@ func init() {
 			forcePathStyleBool,
 			encryptBool,
 			keyID,
+			sseCustomerKey,
+			sseCustomerAlgorithm,
 			secureBool,
 			skipVerifyBool,
 			v4Bool,
