@@ -613,7 +613,7 @@ func testBlobAPI(t *testing.T, env *testEnv, args blobArgs) *testEnv {
 		"Docker-Upload-UUID": []string{uploadUUID},
 	})
 
-	req, err := http.NewRequest("DELETE", uploadURLBase, nil)
+	req, err := http.NewRequest(http.MethodDelete, uploadURLBase, nil)
 	if err != nil {
 		t.Fatalf("unexpected error creating delete request: %v", err)
 	}
@@ -687,6 +687,17 @@ func testBlobAPI(t *testing.T, env *testEnv, args blobArgs) *testEnv {
 	layerFile.Seek(0, 0)
 	uploadURLBase, _ = startPushLayer(t, env, imageName)
 	uploadURLBase, dgst := pushChunk(t, env.builder, imageName, uploadURLBase, layerFile, layerLength)
+
+	// -----------------------------------------
+	// Check the chunk upload status
+	_, end, err := getUploadStatus(uploadURLBase)
+	if err != nil {
+		t.Fatalf("unexpected error doing chunk upload check: %v", err)
+	}
+	if end+1 != layerLength {
+		t.Fatalf("getting wrong chunk upload status: %d", end)
+	}
+
 	finishUpload(t, env.builder, imageName, uploadURLBase, dgst)
 
 	// -----------------------------------------
@@ -775,7 +786,7 @@ func testBlobAPI(t *testing.T, env *testEnv, args blobArgs) *testEnv {
 
 	// Matching etag, gives 304
 	etag := resp.Header.Get("Etag")
-	req, err = http.NewRequest("GET", layerURL, nil)
+	req, err = http.NewRequest(http.MethodGet, layerURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -789,7 +800,7 @@ func testBlobAPI(t *testing.T, env *testEnv, args blobArgs) *testEnv {
 	checkResponse(t, "fetching layer with etag", resp, http.StatusNotModified)
 
 	// Non-matching etag, gives 200
-	req, err = http.NewRequest("GET", layerURL, nil)
+	req, err = http.NewRequest(http.MethodGet, layerURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -961,7 +972,7 @@ func TestStartPushReadOnly(t *testing.T) {
 }
 
 func httpDelete(url string) (*http.Response, error) {
-	req, err := http.NewRequest("DELETE", url, nil)
+	req, err := http.NewRequest(http.MethodDelete, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -1479,7 +1490,7 @@ func testManifestAPISchema1(t *testing.T, env *testEnv, imageName reference.Name
 
 	// Get by name with etag, gives 304
 	etag := resp.Header.Get("Etag")
-	req, err := http.NewRequest("GET", manifestURL, nil)
+	req, err := http.NewRequest(http.MethodGet, manifestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1492,7 +1503,7 @@ func testManifestAPISchema1(t *testing.T, env *testEnv, imageName reference.Name
 	checkResponse(t, "fetching manifest by name with etag", resp, http.StatusNotModified)
 
 	// Get by digest with etag, gives 304
-	req, err = http.NewRequest("GET", manifestDigestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestDigestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1721,7 +1732,7 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 
 	// ------------------
 	// Fetch by tag name
-	req, err := http.NewRequest("GET", manifestURL, nil)
+	req, err := http.NewRequest(http.MethodGet, manifestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1756,7 +1767,7 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 
 	// ---------------
 	// Fetch by digest
-	req, err = http.NewRequest("GET", manifestDigestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestDigestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1788,7 +1799,7 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 
 	// Get by name with etag, gives 304
 	etag := resp.Header.Get("Etag")
-	req, err = http.NewRequest("GET", manifestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1801,7 +1812,7 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 	checkResponse(t, "fetching manifest by name with etag", resp, http.StatusNotModified)
 
 	// Get by digest with etag, gives 304
-	req, err = http.NewRequest("GET", manifestDigestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestDigestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -1981,7 +1992,7 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 
 	// ------------------
 	// Fetch by tag name
-	req, err := http.NewRequest("GET", manifestURL, nil)
+	req, err := http.NewRequest(http.MethodGet, manifestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -2018,7 +2029,7 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 
 	// ---------------
 	// Fetch by digest
-	req, err = http.NewRequest("GET", manifestDigestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestDigestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -2050,7 +2061,7 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 
 	// Get by name with etag, gives 304
 	etag := resp.Header.Get("Etag")
-	req, err = http.NewRequest("GET", manifestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -2063,7 +2074,7 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 	checkResponse(t, "fetching manifest by name with etag", resp, http.StatusNotModified)
 
 	// Get by digest with etag, gives 304
-	req, err = http.NewRequest("GET", manifestDigestURL, nil)
+	req, err = http.NewRequest(http.MethodGet, manifestDigestURL, nil)
 	if err != nil {
 		t.Fatalf("Error constructing request: %s", err)
 	}
@@ -2372,7 +2383,7 @@ func putManifest(t *testing.T, msg, url, contentType string, v interface{}) *htt
 		}
 	}
 
-	req, err := http.NewRequest("PUT", url, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(body))
 	if err != nil {
 		t.Fatalf("error creating request for %s: %v", msg, err)
 	}
@@ -2446,7 +2457,7 @@ func doPushLayer(t *testing.T, ub *v2.URLBuilder, name reference.Named, dgst dig
 	uploadURL := u.String()
 
 	// Just do a monolithic upload
-	req, err := http.NewRequest("PUT", uploadURL, body)
+	req, err := http.NewRequest(http.MethodPut, uploadURL, body)
 	if err != nil {
 		t.Fatalf("unexpected error creating new request: %v", err)
 	}
@@ -2485,6 +2496,27 @@ func pushLayer(t *testing.T, ub *v2.URLBuilder, name reference.Named, dgst diges
 	})
 
 	return resp.Header.Get("Location")
+}
+
+func getUploadStatus(location string) (string, int64, error) {
+	req, err := http.NewRequest(http.MethodGet, location, nil)
+	if err != nil {
+		return location, -1, err
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return location, -1, err
+	}
+
+	defer resp.Body.Close()
+
+	_, end, err := parseContentRange(resp.Header.Get("Range"))
+	if err != nil {
+		return location, -1, err
+	}
+
+	return resp.Header.Get("Location"), end, nil
 }
 
 func finishUpload(t *testing.T, ub *v2.URLBuilder, name reference.Named, uploadURLBase string, dgst digest.Digest) string {
@@ -2528,7 +2560,7 @@ func doPushChunk(t *testing.T, uploadURLBase string, body io.Reader, options chu
 
 	uploadURL := u.String()
 
-	req, err := http.NewRequest("PATCH", uploadURL, body)
+	req, err := http.NewRequest(http.MethodPatch, uploadURL, body)
 	if err != nil {
 		t.Fatalf("unexpected error creating new request: %v", err)
 	}

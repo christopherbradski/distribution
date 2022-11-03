@@ -171,7 +171,7 @@ func (hrs *httpReadSeeker) reader() (io.Reader, error) {
 		return hrs.rc, nil
 	}
 
-	req, err := http.NewRequestWithContext(hrs.ctx, "GET", hrs.url, nil)
+	req, err := http.NewRequestWithContext(hrs.ctx, http.MethodGet, hrs.url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,6 @@ func (hrs *httpReadSeeker) reader() (io.Reader, error) {
 		// context.GetLogger(hrs.context).Infof("Range: %s", req.Header.Get("Range"))
 	}
 
-	req.Header.Add("Accept-Encoding", "identity")
 	resp, err := hrs.client.Do(req)
 	if err != nil {
 		return nil, err
