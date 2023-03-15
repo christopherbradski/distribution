@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"path"
 	"reflect"
 	"testing"
@@ -36,7 +35,6 @@ func TestWriteSeek(t *testing.T) {
 	bs := repository.Blobs(ctx)
 
 	blobUpload, err := bs.Create(ctx)
-
 	if err != nil {
 		t.Fatalf("unexpected error starting layer upload: %s", err)
 	}
@@ -47,7 +45,6 @@ func TestWriteSeek(t *testing.T) {
 	if offset != int64(len(contents)) {
 		t.Fatalf("unexpected value for blobUpload offset:  %v != %v", offset, len(contents))
 	}
-
 }
 
 // TestSimpleBlobUpload covers the blob upload process, exercising common
@@ -75,7 +72,6 @@ func TestSimpleBlobUpload(t *testing.T) {
 	rd := io.TeeReader(randomDataReader, h)
 
 	blobUpload, err := bs.Create(ctx)
-
 	if err != nil {
 		t.Fatalf("unexpected error starting layer upload: %s", err)
 	}
@@ -213,7 +209,7 @@ func TestSimpleBlobUpload(t *testing.T) {
 	}
 
 	// Re-upload the blob
-	randomBlob, err := ioutil.ReadAll(randomDataReader)
+	randomBlob, err := io.ReadAll(randomDataReader)
 	if err != nil {
 		t.Fatalf("Error reading all of blob %s", err.Error())
 	}
@@ -331,7 +327,7 @@ func TestSimpleBlobRead(t *testing.T) {
 		t.Fatalf("seek failed: expected 0 offset, got %d", offset)
 	}
 
-	p, err := ioutil.ReadAll(rc)
+	p, err := io.ReadAll(rc)
 	if err != nil {
 		t.Fatalf("error reading all of blob: %v", err)
 	}
@@ -346,7 +342,7 @@ func TestSimpleBlobRead(t *testing.T) {
 		t.Fatalf("error resetting layer reader: %v", err)
 	}
 
-	randomLayerData, err := ioutil.ReadAll(randomLayerReader)
+	randomLayerData, err := io.ReadAll(randomLayerReader)
 	if err != nil {
 		t.Fatalf("random layer read failed: %v", err)
 	}
@@ -385,7 +381,6 @@ func TestBlobMount(t *testing.T) {
 	sbs := sourceRepository.Blobs(ctx)
 
 	blobUpload, err := sbs.Create(ctx)
-
 	if err != nil {
 		t.Fatalf("unexpected error starting layer upload: %s", err)
 	}

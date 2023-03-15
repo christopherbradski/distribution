@@ -4,7 +4,6 @@
 package oss
 
 import (
-	"io/ioutil"
 	"os"
 	"strconv"
 	"testing"
@@ -24,16 +23,19 @@ var ossDriverConstructor func(rootDirectory string) (*Driver, error)
 var skipCheck func() string
 
 func init() {
-	accessKey := os.Getenv("ALIYUN_ACCESS_KEY_ID")
-	secretKey := os.Getenv("ALIYUN_ACCESS_KEY_SECRET")
-	bucket := os.Getenv("OSS_BUCKET")
-	region := os.Getenv("OSS_REGION")
-	internal := os.Getenv("OSS_INTERNAL")
-	encrypt := os.Getenv("OSS_ENCRYPT")
-	secure := os.Getenv("OSS_SECURE")
-	endpoint := os.Getenv("OSS_ENDPOINT")
-	encryptionKeyID := os.Getenv("OSS_ENCRYPTIONKEYID")
-	root, err := ioutil.TempDir("", "driver-")
+	var (
+		accessKey       = os.Getenv("ALIYUN_ACCESS_KEY_ID")
+		secretKey       = os.Getenv("ALIYUN_ACCESS_KEY_SECRET")
+		bucket          = os.Getenv("OSS_BUCKET")
+		region          = os.Getenv("OSS_REGION")
+		internal        = os.Getenv("OSS_INTERNAL")
+		encrypt         = os.Getenv("OSS_ENCRYPT")
+		secure          = os.Getenv("OSS_SECURE")
+		endpoint        = os.Getenv("OSS_ENDPOINT")
+		encryptionKeyID = os.Getenv("OSS_ENCRYPTIONKEYID")
+	)
+
+	root, err := os.MkdirTemp("", "driver-")
 	if err != nil {
 		panic(err)
 	}
@@ -99,11 +101,7 @@ func TestEmptyRootList(t *testing.T) {
 		t.Skip(skipCheck())
 	}
 
-	validRoot, err := ioutil.TempDir("", "driver-")
-	if err != nil {
-		t.Fatalf("unexpected error creating temporary directory: %v", err)
-	}
-	defer os.Remove(validRoot)
+	validRoot := t.TempDir()
 
 	rootedDriver, err := ossDriverConstructor(validRoot)
 	if err != nil {

@@ -17,9 +17,9 @@ import (
 	"crypto/md5"
 	"crypto/tls"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math"
 	"net/http"
 	"path/filepath"
@@ -38,7 +38,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 
 	dcontext "github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/registry/client/transport"
 	storagedriver "github.com/distribution/distribution/v3/registry/storage/driver"
 	"github.com/distribution/distribution/v3/registry/storage/driver/base"
 	"github.com/distribution/distribution/v3/registry/storage/driver/factory"
@@ -95,7 +94,7 @@ var validRegions = map[string]struct{}{}
 // validObjectACLs contains known s3 object Acls
 var validObjectACLs = map[string]struct{}{}
 
-//DriverParameters A struct that encapsulates all of the driver parameters after all values have been set
+// DriverParameters A struct that encapsulates all of the driver parameters after all values have been set
 type DriverParameters struct {
 	AccessKey                   string
 	SecretKey                   string
@@ -543,22 +542,13 @@ func New(params DriverParameters) (*Driver, error) {
 		awsConfig.UseDualStackEndpoint = endpoints.DualStackEndpointStateEnabled
 	}
 
-	if params.UserAgent != "" || params.SkipVerify {
-		httpTransport := http.DefaultTransport
-		if params.SkipVerify {
-			httpTransport = &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-			}
+	if params.SkipVerify {
+		httpTransport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}
-		if params.UserAgent != "" {
-			awsConfig.WithHTTPClient(&http.Client{
-				Transport: transport.NewTransport(httpTransport, transport.NewHeaderRequestModifier(http.Header{http.CanonicalHeaderKey("User-Agent"): []string{params.UserAgent}})),
-			})
-		} else {
-			awsConfig.WithHTTPClient(&http.Client{
-				Transport: transport.NewTransport(httpTransport),
-			})
-		}
+		awsConfig.WithHTTPClient(&http.Client{
+			Transport: httpTransport,
+		})
 	}
 
 	sseCustomerAlgorithm := params.SSECustomerAlgorithm
@@ -576,6 +566,11 @@ func New(params DriverParameters) (*Driver, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new session with aws config: %v", err)
 	}
+
+	if params.UserAgent != "" {
+		sess.Handlers.Build.PushBack(request.MakeAddToUserAgentFreeFormHandler(params.UserAgent))
+	}
+
 	s3obj := s3.New(sess)
 
 	// enable S3 compatible signature v2 signing instead
@@ -636,7 +631,7 @@ func (d *driver) GetContent(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	return ioutil.ReadAll(reader)
+	return io.ReadAll(reader)
 }
 
 // PutContent stores the []byte content at a location designated by "path".
@@ -671,7 +666,7 @@ func (d *driver) Reader(ctx context.Context, path string, offset int64) (io.Read
 
 	if err != nil {
 		if s3Err, ok := err.(awserr.Error); ok && s3Err.Code() == "InvalidRange" {
-			return ioutil.NopCloser(bytes.NewReader(nil)), nil
+			return io.NopCloser(bytes.NewReader(nil)), nil
 		}
 
 		return nil, parseError(path, err)
@@ -738,7 +733,7 @@ func (d *driver) Writer(ctx context.Context, path string, appendParam bool) (sto
 				return nil, parseError(path, err)
 			}
 			allParts = append(allParts, partsList.Parts...)
-			for *resp.IsTruncated {
+			for *partsList.IsTruncated {
 				curListPartsInput := &s3.ListPartsInput{
 					Bucket:           aws.String(d.Bucket),
 					Key:              aws.String(key),
@@ -972,53 +967,70 @@ func (d *driver) copy(ctx context.Context, sourcePath string, destPath string) e
 	return err
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // Delete recursively deletes all objects stored at "path" and its subpaths.
 // We must be careful since S3 does not guarantee read after delete consistency
 func (d *driver) Delete(ctx context.Context, path string) error {
 	s3Objects := make([]*s3.ObjectIdentifier, 0, listMax)
-
-	// manually add the given path if it's a file
-	stat, err := d.Stat(ctx, path)
-	if err != nil {
-		return err
-	}
-	if stat != nil && !stat.IsDir() {
-		path := d.s3Path(path)
-		s3Objects = append(s3Objects, &s3.ObjectIdentifier{
-			Key: &path,
-		})
-	}
-
-	// list objects under the given path as a subpath (suffix with slash "/")
-	s3Path := d.s3Path(path) + "/"
+	s3Path := d.s3Path(path)
 	listObjectsInput := &s3.ListObjectsV2Input{
 		Bucket: aws.String(d.Bucket),
 		Prefix: aws.String(s3Path),
 	}
-ListLoop:
+
 	for {
 		// list all the objects
 		resp, err := d.S3.ListObjectsV2(listObjectsInput)
 
 		// resp.Contents can only be empty on the first call
 		// if there were no more results to return after the first call, resp.IsTruncated would have been false
-		// and the loop would be exited without recalling ListObjects
+		// and the loop would exit without recalling ListObjects
 		if err != nil || len(resp.Contents) == 0 {
-			break ListLoop
+			return storagedriver.PathNotFoundError{Path: path}
 		}
 
 		for _, key := range resp.Contents {
+			// Skip if we encounter a key that is not a subpath (so that deleting "/a" does not delete "/ab").
+			if len(*key.Key) > len(s3Path) && (*key.Key)[len(s3Path)] != '/' {
+				continue
+			}
 			s3Objects = append(s3Objects, &s3.ObjectIdentifier{
 				Key: key.Key,
 			})
 		}
+
+		// Delete objects only if the list is not empty, otherwise S3 API returns a cryptic error
+		if len(s3Objects) > 0 {
+			// NOTE: according to AWS docs https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectsV2.html
+			// by default the response returns up to 1,000 key names. The response _might_ contain fewer keys but it will never contain more.
+			// 10000 keys is coincidentally (?) also the max number of keys that can be deleted in a single Delete operation, so we'll just smack
+			// Delete here straight away and reset the object slice when successful.
+			resp, err := d.S3.DeleteObjects(&s3.DeleteObjectsInput{
+				Bucket: aws.String(d.Bucket),
+				Delete: &s3.Delete{
+					Objects: s3Objects,
+					Quiet:   aws.Bool(false),
+				},
+			})
+			if err != nil {
+				return err
+			}
+
+			if len(resp.Errors) > 0 {
+				// NOTE: AWS SDK s3.Error does not implement error interface which
+				// is pretty intensely sad, so we have to do away with this for now.
+				errs := make([]error, 0, len(resp.Errors))
+				for _, err := range resp.Errors {
+					errs = append(errs, errors.New(err.String()))
+				}
+				return storagedriver.Errors{
+					DriverName: driverName,
+					Errs:       errs,
+				}
+			}
+		}
+		// NOTE: we don't want to reallocate
+		// the slice so we simply "reset" it
+		s3Objects = s3Objects[:0]
 
 		// resp.Contents must have at least one element or we would have returned not found
 		listObjectsInput.StartAfter = resp.Contents[len(resp.Contents)-1].Key
@@ -1030,24 +1042,6 @@ ListLoop:
 		}
 	}
 
-	total := len(s3Objects)
-	if total == 0 {
-		return storagedriver.PathNotFoundError{Path: path}
-	}
-
-	// need to chunk objects into groups of 1000 per s3 restrictions
-	for i := 0; i < total; i += 1000 {
-		_, err := d.S3.DeleteObjects(&s3.DeleteObjectsInput{
-			Bucket: aws.String(d.Bucket),
-			Delete: &s3.Delete{
-				Objects: s3Objects[i:min(i+1000, total)],
-				Quiet:   aws.Bool(false),
-			},
-		})
-		if err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -1219,16 +1213,22 @@ func (d *driver) doWalk(parentCtx context.Context, objectCount *int64, path, pre
 // directoryDiff finds all directories that are not in common between
 // the previous and current paths in sorted order.
 //
-// Eg 1 directoryDiff("/path/to/folder", "/path/to/folder/folder/file")
-//   => [ "/path/to/folder/folder" ],
-// Eg 2 directoryDiff("/path/to/folder/folder1", "/path/to/folder/folder2/file")
-//   => [ "/path/to/folder/folder2" ]
-// Eg 3 directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/file")
-//  => [ "/path/to/folder/folder2" ]
-// Eg 4 directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/folder1/file")
-//   => [ "/path/to/folder/folder2", "/path/to/folder/folder2/folder1" ]
-// Eg 5 directoryDiff("/", "/path/to/folder/folder/file")
-//   => [ "/path", "/path/to", "/path/to/folder", "/path/to/folder/folder" ],
+// # Examples
+//
+//	directoryDiff("/path/to/folder", "/path/to/folder/folder/file")
+//	// => [ "/path/to/folder/folder" ]
+//
+//	directoryDiff("/path/to/folder/folder1", "/path/to/folder/folder2/file")
+//	// => [ "/path/to/folder/folder2" ]
+//
+//	directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/file")
+//	// => [ "/path/to/folder/folder2" ]
+//
+//	directoryDiff("/path/to/folder/folder1/file", "/path/to/folder/folder2/folder1/file")
+//	// => [ "/path/to/folder/folder2", "/path/to/folder/folder2/folder1" ]
+//
+//	directoryDiff("/", "/path/to/folder/folder/file")
+//	// => [ "/path", "/path/to", "/path/to/folder", "/path/to/folder/folder" ]
 func directoryDiff(prev, current string) []string {
 	var paths []string
 
@@ -1517,7 +1517,7 @@ func (w *writer) Write(p []byte) (int, error) {
 			}
 			defer resp.Body.Close()
 			w.parts = nil
-			w.readyPart, err = ioutil.ReadAll(resp.Body)
+			w.readyPart, err = io.ReadAll(resp.Body)
 			if err != nil {
 				return 0, err
 			}

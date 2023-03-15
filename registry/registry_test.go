@@ -13,7 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net"
 	"net/http"
@@ -121,7 +121,7 @@ func TestGracefulShutdown(t *testing.T) {
 	if resp.Status != "200 OK" {
 		t.Error("response status is not 200 OK: ", resp.Status)
 	}
-	if body, err := ioutil.ReadAll(resp.Body); err != nil || string(body) != "{}" {
+	if body, err := io.ReadAll(resp.Body); err != nil || string(body) != "{}" {
 		t.Error("Body is not {}; ", string(body))
 	}
 }
@@ -152,7 +152,7 @@ func TestGetCipherSuite(t *testing.T) {
 		t.Error("did not return expected error about unknown cipher suite")
 	}
 
-	var insecureCipherSuites = []string{
+	insecureCipherSuites := []string{
 		"TLS_RSA_WITH_RC4_128_SHA",
 		"TLS_RSA_WITH_AES_128_CBC_SHA256",
 		"TLS_ECDHE_ECDSA_WITH_RC4_128_SHA",
@@ -234,7 +234,7 @@ func buildRegistryTLSConfig(name, keyType string, cipherSuites []string) (*regis
 	}
 
 	keyPath := path.Join(os.TempDir(), name+".key")
-	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+	keyOut, err := os.OpenFile(keyPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open %s for writing: %v", keyPath, err)
 	}
@@ -316,7 +316,7 @@ func TestRegistrySupportedCipherSuite(t *testing.T) {
 	if resp.Status != "200 OK" {
 		t.Error("response status is not 200 OK: ", resp.Status)
 	}
-	if body, err := ioutil.ReadAll(resp.Body); err != nil || string(body) != "{}" {
+	if body, err := io.ReadAll(resp.Body); err != nil || string(body) != "{}" {
 		t.Error("Body is not {}; ", string(body))
 	}
 

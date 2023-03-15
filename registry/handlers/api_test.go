@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -69,7 +68,7 @@ func TestCheckAPI(t *testing.T) {
 		"Content-Length": []string{"2"},
 	})
 
-	p, err := ioutil.ReadAll(resp.Body)
+	p, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("unexpected error reading response body: %v", err)
 	}
@@ -87,7 +86,8 @@ func TestCatalogAPI(t *testing.T) {
 
 	values := url.Values{
 		"last": []string{""},
-		"n":    []string{strconv.Itoa(chunkLen)}}
+		"n":    []string{strconv.Itoa(chunkLen)},
+	}
 
 	catalogURL, err := env.builder.BuildCatalogURL(values)
 	if err != nil {
@@ -453,7 +453,6 @@ func TestBlobAPI(t *testing.T) {
 	defer env2.Shutdown()
 	args = makeBlobArgs(t)
 	testBlobAPI(t, env2, args)
-
 }
 
 func TestBlobDelete(t *testing.T) {
@@ -1110,7 +1109,7 @@ const (
 
 func (factory *storageManifestErrDriverFactory) Create(parameters map[string]interface{}) (storagedriver.StorageDriver, error) {
 	// Initialize the mock driver
-	var errGenericStorage = errors.New("generic storage error")
+	errGenericStorage := errors.New("generic storage error")
 	return &mockErrorDriver{
 		returnErrs: []mockErrorMapping{
 			{
@@ -1346,7 +1345,6 @@ func testManifestAPISchema1(t *testing.T, env *testEnv, imageName reference.Name
 
 	for i := range unsignedManifest.FSLayers {
 		rs, dgst, err := testutil.CreateRandomTarFile()
-
 		if err != nil {
 			t.Fatalf("error creating random layer %d: %v", i, err)
 		}
@@ -1450,7 +1448,6 @@ func testManifestAPISchema1(t *testing.T, env *testEnv, imageName reference.Name
 	sm2, err := schema1.Sign(&fetchedManifestByDigest.Manifest, env.pk)
 	if err != nil {
 		t.Fatal(err)
-
 	}
 
 	// Re-push with a few different Content-Types. The official schema1
@@ -1684,7 +1681,6 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 
 	for i := range manifest.Layers {
 		rs, dgst, err := testutil.CreateRandomTarFile()
-
 		if err != nil {
 			t.Fatalf("error creating random layer %d: %v", i, err)
 		}
@@ -1860,7 +1856,7 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 	}
 	defer resp.Body.Close()
 
-	manifestBytes, err := ioutil.ReadAll(resp.Body)
+	manifestBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("error reading response body: %v", err)
 	}
@@ -2094,7 +2090,7 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 	}
 	defer resp.Body.Close()
 
-	manifestBytes, err := ioutil.ReadAll(resp.Body)
+	manifestBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("error reading response body: %v", err)
 	}
@@ -2279,7 +2275,6 @@ func testManifestDelete(t *testing.T, env *testEnv, args manifestArgs) {
 	if len(tagsResponse.Tags) != 0 {
 		t.Fatalf("expected 0 tags in response: %v", tagsResponse.Tags)
 	}
-
 }
 
 type testEnv struct {
@@ -2308,7 +2303,6 @@ func newTestEnvMirror(t *testing.T, deleteEnabled bool) *testEnv {
 	config.Compatibility.Schema1.Enabled = true
 
 	return newTestEnvWithConfig(t, &config)
-
 }
 
 func newTestEnv(t *testing.T, deleteEnabled bool) *testEnv {
@@ -2334,7 +2328,6 @@ func newTestEnvWithConfig(t *testing.T, config *configuration.Configuration) *te
 	app := NewApp(ctx, config)
 	server := httptest.NewServer(handlers.CombinedLoggingHandler(os.Stderr, app))
 	builder, err := v2.NewURLBuilderFromString(server.URL+config.HTTP.Prefix, false)
-
 	if err != nil {
 		t.Fatalf("error creating url builder: %v", err)
 	}
@@ -2620,7 +2613,7 @@ func checkResponse(t *testing.T, msg string, resp *http.Response, expectedStatus
 // expected error codes, returning the error structure, the json slice and a
 // count of the errors by code.
 func checkBodyHasErrorCodes(t *testing.T, msg string, resp *http.Response, errorCodes ...errcode.ErrorCode) (errcode.Errors, []byte, map[errcode.ErrorCode]int) {
-	p, err := ioutil.ReadAll(resp.Body)
+	p, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("unexpected error reading body %s: %v", msg, err)
 	}
@@ -2832,7 +2825,6 @@ func TestRegistryAsCacheMutationAPIs(t *testing.T) {
 	blobURL, _ := env.builder.BuildBlobURL(ref)
 	resp, _ = httpDelete(blobURL)
 	checkResponse(t, "deleting blob from cache", resp, errcode.ErrorCodeUnsupported.Descriptor().HTTPStatusCode)
-
 }
 
 func TestProxyManifestGetByTag(t *testing.T) {

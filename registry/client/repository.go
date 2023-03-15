@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -139,16 +139,14 @@ func NewRepository(name reference.Named, baseURL string, transport http.RoundTri
 		return nil, err
 	}
 
-	client := &http.Client{
-		Transport:     transport,
-		CheckRedirect: checkHTTPRedirect,
-		// TODO(dmcgowan): create cookie jar
-	}
-
 	return &repository{
-		client: client,
-		ub:     ub,
-		name:   name,
+		client: &http.Client{
+			Transport:     transport,
+			CheckRedirect: checkHTTPRedirect,
+			// TODO(dmcgowan): create cookie jar
+		},
+		ub:   ub,
+		name: name,
 	}, nil
 }
 
@@ -163,16 +161,15 @@ func (r *repository) Named() reference.Named {
 }
 
 func (r *repository) Blobs(ctx context.Context) distribution.BlobStore {
-	statter := &blobStatter{
+	return &blobs{
 		name:   r.name,
 		ub:     r.ub,
 		client: r.client,
-	}
-	return &blobs{
-		name:    r.name,
-		ub:      r.ub,
-		client:  r.client,
-		statter: cache.NewCachedBlobStatter(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize), statter),
+		statter: cache.NewCachedBlobStatter(memory.NewInMemoryBlobDescriptorCacheProvider(memory.UnlimitedSize), &blobStatter{
+			name:   r.name,
+			ub:     r.ub,
+			client: r.client,
+		}),
 	}
 }
 
@@ -227,7 +224,7 @@ func (t *tags) All(ctx context.Context) ([]string, error) {
 		defer resp.Body.Close()
 
 		if SuccessStatus(resp.StatusCode) {
-			b, err := ioutil.ReadAll(resp.Body)
+			b, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return tags, err
 			}
@@ -240,8 +237,8 @@ func (t *tags) All(ctx context.Context) ([]string, error) {
 			}
 			tags = append(tags, tagsResponse.Tags...)
 			if link := resp.Header.Get("Link"); link != "" {
-				linkURLStr := strings.Trim(strings.Split(link, ";")[0], "<>")
-				linkURL, err := url.Parse(linkURLStr)
+				firsLink, _, _ := strings.Cut(link, ";")
+				linkURL, err := url.Parse(strings.Trim(firsLink, "<>"))
 				if err != nil {
 					return tags, err
 				}
@@ -268,7 +265,7 @@ func descriptorFromResponse(response *http.Response) (distribution.Descriptor, e
 
 	digestHeader := headers.Get("Docker-Content-Digest")
 	if digestHeader == "" {
-		data, err := ioutil.ReadAll(response.Body)
+		data, err := io.ReadAll(response.Body)
 		if err != nil {
 			return distribution.Descriptor{}, err
 		}
@@ -296,7 +293,6 @@ func descriptorFromResponse(response *http.Response) (distribution.Descriptor, e
 	desc.Size = length
 
 	return desc, nil
-
 }
 
 // Get issues a HEAD request for a Manifest against its named endpoint in order
@@ -528,8 +524,7 @@ func (ms *manifests) Get(ctx context.Context, dgst digest.Digest, options ...dis
 			}
 		}
 		mt := resp.Header.Get("Content-Type")
-		body, err := ioutil.ReadAll(resp.Body)
-
+		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return nil, err
 		}
@@ -667,7 +662,6 @@ func sanitizeLocation(location, base string) (string, error) {
 
 func (bs *blobs) Stat(ctx context.Context, dgst digest.Digest) (distribution.Descriptor, error) {
 	return bs.statter.Stat(ctx, dgst)
-
 }
 
 func (bs *blobs) Get(ctx context.Context, dgst digest.Digest) ([]byte, error) {
@@ -677,10 +671,10 @@ func (bs *blobs) Get(ctx context.Context, dgst digest.Digest) ([]byte, error) {
 	}
 	defer reader.Close()
 
-	return ioutil.ReadAll(reader)
+	return io.ReadAll(reader)
 }
 
-func (bs *blobs) Open(ctx context.Context, dgst digest.Digest) (distribution.ReadSeekCloser, error) {
+func (bs *blobs) Open(ctx context.Context, dgst digest.Digest) (io.ReadSeekCloser, error) {
 	ref, err := reference.WithDigest(bs.name, dgst)
 	if err != nil {
 		return nil, err
@@ -690,13 +684,12 @@ func (bs *blobs) Open(ctx context.Context, dgst digest.Digest) (distribution.Rea
 		return nil, err
 	}
 
-	return transport.NewHTTPReadSeeker(ctx, bs.client, blobURL,
-		func(resp *http.Response) error {
-			if resp.StatusCode == http.StatusNotFound {
-				return distribution.ErrBlobUnknown
-			}
-			return HandleErrorResponse(resp)
-		}), nil
+	return transport.NewHTTPReadSeeker(ctx, bs.client, blobURL, func(resp *http.Response) error {
+		if resp.StatusCode == http.StatusNotFound {
+			return distribution.ErrBlobUnknown
+		}
+		return HandleErrorResponse(resp)
+	}), nil
 }
 
 func (bs *blobs) ServeBlob(ctx context.Context, w http.ResponseWriter, r *http.Request, dgst digest.Digest) error {
@@ -812,8 +805,8 @@ func (bs *blobs) Create(ctx context.Context, options ...distribution.BlobCreateO
 		// TODO(dmcgowan): Check for invalid UUID
 		uuid := resp.Header.Get("Docker-Upload-UUID")
 		if uuid == "" {
-			parts := strings.Split(resp.Header.Get("Location"), "/")
-			uuid = parts[len(parts)-1]
+			// uuid is expected to be the last path element
+			_, uuid = path.Split(resp.Header.Get("Location"))
 		}
 		if uuid == "" {
 			return nil, errors.New("cannot retrieve docker upload UUID")

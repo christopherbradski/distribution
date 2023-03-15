@@ -2,7 +2,7 @@ package proxy
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"math/rand"
 	"net/http"
 	"net/http/httptest"
@@ -59,7 +59,7 @@ func (sbs statsBlobStore) Resume(ctx context.Context, id string) (distribution.B
 	return sbs.blobs.Resume(ctx, id)
 }
 
-func (sbs statsBlobStore) Open(ctx context.Context, dgst digest.Digest) (distribution.ReadSeekCloser, error) {
+func (sbs statsBlobStore) Open(ctx context.Context, dgst digest.Digest) (io.ReadSeekCloser, error) {
 	sbsMu.Lock()
 	sbs.stats["open"]++
 	sbsMu.Unlock()
@@ -114,6 +114,8 @@ func (te *testEnv) RemoteStats() *map[string]int {
 
 // Populate remote store and record the digests
 func makeTestEnv(t *testing.T, name string) *testEnv {
+	t.Helper()
+
 	nameRef, err := reference.WithName(name)
 	if err != nil {
 		t.Fatalf("unable to parse reference: %s", err)
@@ -121,15 +123,8 @@ func makeTestEnv(t *testing.T, name string) *testEnv {
 
 	ctx := context.Background()
 
-	truthDir, err := ioutil.TempDir("", "truth")
-	if err != nil {
-		t.Fatalf("unable to create tempdir: %s", err)
-	}
-
-	cacheDir, err := ioutil.TempDir("", "cache")
-	if err != nil {
-		t.Fatalf("unable to create tempdir: %s", err)
-	}
+	truthDir := t.TempDir()
+	cacheDir := t.TempDir()
 
 	localDriver, err := filesystem.FromParameters(map[string]interface{}{
 		"rootdirectory": truthDir,
@@ -221,6 +216,7 @@ func populate(t *testing.T, te *testEnv, blobCount, size, numUnique int) {
 	te.inRemote = inRemote
 	te.numUnique = numUnique
 }
+
 func TestProxyStoreGet(t *testing.T) {
 	te := makeTestEnv(t, "foo/bar")
 
@@ -253,7 +249,6 @@ func TestProxyStoreGet(t *testing.T) {
 	if (*remoteStats)["get"] != 1 {
 		t.Errorf("Unexpected remote get count")
 	}
-
 }
 
 func TestProxyStoreStat(t *testing.T) {
@@ -284,7 +279,6 @@ func TestProxyStoreStat(t *testing.T) {
 	if te.store.authChallenger.(*mockChallenger).count != len(te.inRemote) {
 		t.Fatalf("Unexpected auth challenge count, got %#v", te.store.authChallenger)
 	}
-
 }
 
 func TestProxyStoreServeHighConcurrency(t *testing.T) {
