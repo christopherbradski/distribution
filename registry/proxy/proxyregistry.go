@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -25,11 +26,12 @@ var repositoryTTL = 24 * 7 * time.Hour
 
 // proxyingRegistry fetches content from a remote registry and caches it locally
 type proxyingRegistry struct {
-	embedded       distribution.Namespace // provides local registry functionality
-	scheduler      *scheduler.TTLExpirationScheduler
-	ttl            *time.Duration
-	remoteURL      url.URL
-	authChallenger authChallenger
+	embedded         distribution.Namespace // provides local registry functionality
+	scheduler        *scheduler.TTLExpirationScheduler
+	ttl              *time.Duration
+	remoteURL        url.URL
+	enableNamespaces bool
+	authChallenger   authChallenger
 }
 
 // NewRegistryPullThroughCache creates a registry acting as a pull through cache
@@ -112,20 +114,31 @@ func NewRegistryPullThroughCache(ctx context.Context, registry distribution.Name
 		}
 	}
 
-	cs, err := configureAuth(config.Username, config.Password, config.RemoteURL)
+	if !config.EnableNamespaces {
+		config.NamespaceCredentials = map[string]configuration.ProxyCredential{
+			config.RemoteURL: {
+				Username: config.Username,
+				Password: config.Password,
+			},
+		}
+	}
+
+	cs, err := configureAuth(config.NamespaceCredentials)
 	if err != nil {
 		return nil, err
 	}
 
 	return &proxyingRegistry{
-		embedded:  registry,
-		scheduler: s,
-		ttl:       ttl,
-		remoteURL: *remoteURL,
+		embedded:         registry,
+		scheduler:        s,
+		ttl:              ttl,
+		remoteURL:        *remoteURL,
+		enableNamespaces: config.EnableNamespaces,
 		authChallenger: &remoteAuthChallenger{
-			remoteURL: *remoteURL,
-			cm:        challenge.NewSimpleManager(),
-			cs:        cs,
+			remoteURL:        *remoteURL,
+			enableNamespaces: config.EnableNamespaces,
+			cm:               challenge.NewSimpleManager(),
+			cs:               cs,
 		},
 	}, nil
 }
@@ -140,6 +153,21 @@ func (pr *proxyingRegistry) Repositories(ctx context.Context, repos []string, la
 
 func (pr *proxyingRegistry) Repository(ctx context.Context, name reference.Named) (distribution.Repository, error) {
 	c := pr.authChallenger
+
+	localName := name
+	remoteURL := pr.remoteURL
+	if pr.enableNamespaces {
+		var err error
+		remoteURL, err = extractRemoteURL(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		localName, err = reference.WithName(remoteURL.Host + "/" + name.Name())
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	tkopts := auth.TokenHandlerOptions{
 		Transport:   http.DefaultTransport,
@@ -157,7 +185,7 @@ func (pr *proxyingRegistry) Repository(ctx context.Context, name reference.Named
 		auth.NewAuthorizer(c.challengeManager(),
 			auth.NewTokenHandlerWithOptions(tkopts)))
 
-	localRepo, err := pr.embedded.Repository(ctx, name)
+	localRepo, err := pr.embedded.Repository(ctx, localName)
 	if err != nil {
 		return nil, err
 	}
@@ -166,7 +194,7 @@ func (pr *proxyingRegistry) Repository(ctx context.Context, name reference.Named
 		return nil, err
 	}
 
-	remoteRepo, err := client.NewRepository(name, pr.remoteURL.String(), tr)
+	remoteRepo, err := client.NewRepository(name, remoteURL.String(), tr)
 	if err != nil {
 		return nil, err
 	}
@@ -182,11 +210,11 @@ func (pr *proxyingRegistry) Repository(ctx context.Context, name reference.Named
 			remoteStore:    remoteRepo.Blobs(ctx),
 			scheduler:      pr.scheduler,
 			ttl:            pr.ttl,
-			repositoryName: name,
+			repositoryName: localName,
 			authChallenger: pr.authChallenger,
 		},
 		manifests: &proxyManifestStore{
-			repositoryName:  name,
+			repositoryName:  localName,
 			localManifests:  localManifests, // Options?
 			remoteManifests: remoteManifests,
 			ctx:             ctx,
@@ -219,7 +247,8 @@ type authChallenger interface {
 }
 
 type remoteAuthChallenger struct {
-	remoteURL url.URL
+	remoteURL        url.URL
+	enableNamespaces bool
 	sync.Mutex
 	cm challenge.Manager
 	cs auth.CredentialStore
@@ -239,6 +268,14 @@ func (r *remoteAuthChallenger) tryEstablishChallenges(ctx context.Context) error
 	defer r.Unlock()
 
 	remoteURL := r.remoteURL
+	if r.enableNamespaces {
+		requestRemoteNSURL, err := extractRemoteURL(ctx)
+		if err != nil {
+			return err
+		}
+		remoteURL = requestRemoteNSURL
+	}
+
 	remoteURL.Path = "/v2/"
 	challenges, err := r.cm.GetChallenges(remoteURL)
 	if err != nil {
@@ -282,4 +319,21 @@ func (pr *proxiedRepository) Named() reference.Named {
 
 func (pr *proxiedRepository) Tags(ctx context.Context) distribution.TagService {
 	return pr.tags
+}
+
+func extractRemoteURL(ctx context.Context) (url.URL, error) {
+	r, err := dcontext.GetRequest(ctx)
+	if err != nil {
+		return url.URL{}, err
+	}
+
+	ns := r.URL.Query().Get("ns")
+	if ns == "" {
+		return url.URL{}, errors.New("ns parameter is missing")
+	}
+
+	return url.URL{
+		Scheme: "https",
+		Host:   ns,
+	}, nil
 }
