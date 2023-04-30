@@ -94,8 +94,20 @@ func (mb *Builder) Build(ctx context.Context) (distribution.Manifest, error) {
 }
 
 // AppendReference adds a reference to the current ManifestBuilder.
-func (mb *Builder) AppendReference(d distribution.Describable) error {
-	mb.layers = append(mb.layers, d.Descriptor())
+//
+// The reference must be either a [distribution.Descriptor] or a
+// [distribution.Describable].
+func (mb *Builder) AppendReference(reference any) error {
+	var descriptor distribution.Descriptor
+	if dt, ok := reference.(distribution.Descriptor); ok {
+		descriptor = dt
+	} else if dt, ok := reference.(distribution.Describable); ok {
+		descriptor = dt.Descriptor()
+	} else {
+		return errors.New("invalid type for reference: should be either a Descriptor or a Describable")
+	}
+
+	mb.layers = append(mb.layers, descriptor)
 	return nil
 }
 

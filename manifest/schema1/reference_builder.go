@@ -57,10 +57,12 @@ func (mb *referenceManifestBuilder) Build(ctx context.Context) (distribution.Man
 
 // AppendReference adds a reference to the current ManifestBuilder.
 //
+// The reference must be a [Reference].
+//
 // Deprecated: Docker Image Manifest v2, Schema 1 is deprecated since 2015.
 // Use Docker Image Manifest v2, Schema 2, or the OCI Image Specification.
-func (mb *referenceManifestBuilder) AppendReference(d distribution.Describable) error {
-	r, ok := d.(Reference)
+func (mb *referenceManifestBuilder) AppendReference(reference any) error {
+	r, ok := reference.(Reference)
 	if !ok {
 		return fmt.Errorf("unable to add non-reference type to v1 builder")
 	}
