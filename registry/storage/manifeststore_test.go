@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck // Ignore SA1019: "github.com/distribution/distribution/v3/manifest/schema1" is deprecated, as it's used for backward compatibility.
 	"github.com/distribution/distribution/v3/reference"
@@ -19,6 +18,7 @@ import (
 	"github.com/distribution/distribution/v3/testutil"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -80,11 +80,9 @@ func testManifestStorage(t *testing.T, schema1Enabled bool, options ...RegistryO
 	}
 
 	m := schema1.Manifest{ //nolint:staticcheck // Ignore SA1019: "github.com/distribution/distribution/v3/manifest/schema1" is deprecated, as it's used for backward compatibility.
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: env.name.Name(),
-		Tag:  env.tag,
+		Versioned: specs.Versioned{SchemaVersion: 1},
+		Name:      env.name.Name(),
+		Tag:       env.tag,
 	}
 
 	// Build up some test layers and add them to the manifest, saving the
@@ -495,7 +493,7 @@ func testOCIManifestStorage(t *testing.T, testname string, includeMediaTypes boo
 		t.Fatalf("%s: unexpected MediaType for result, %s", testname, fetchedManifest.MediaType)
 	}
 
-	if fetchedManifest.SchemaVersion != ocischema.SchemaVersion.SchemaVersion {
+	if fetchedManifest.SchemaVersion != 2 {
 		t.Fatalf("%s: unexpected schema version for result, %d", testname, fetchedManifest.SchemaVersion)
 	}
 
