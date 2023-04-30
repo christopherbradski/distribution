@@ -247,10 +247,20 @@ func (mb *configManifestBuilder) emptyTar(ctx context.Context) (digest.Digest, e
 
 // AppendReference adds a reference to the current ManifestBuilder.
 //
+// The reference must be either a [distribution.Descriptor] or a
+// [distribution.Describable].
+//
 // Deprecated: Docker Image Manifest v2, Schema 1 is deprecated since 2015.
 // Use Docker Image Manifest v2, Schema 2, or the OCI Image Specification.
-func (mb *configManifestBuilder) AppendReference(d distribution.Describable) error {
-	descriptor := d.Descriptor()
+func (mb *configManifestBuilder) AppendReference(reference any) error {
+	var descriptor distribution.Descriptor
+	if dt, ok := reference.(distribution.Descriptor); ok {
+		descriptor = dt
+	} else if dt, ok := reference.(distribution.Describable); ok {
+		descriptor = dt.Descriptor()
+	} else {
+		return errors.New("invalid type for reference: should be either a Descriptor or a Describable")
+	}
 
 	if err := descriptor.Digest.Validate(); err != nil {
 		return err

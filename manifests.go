@@ -44,7 +44,9 @@ type ManifestBuilder interface {
 	//
 	// The destination of the reference is dependent on the manifest type and
 	// the dependency type.
-	AppendReference(dependency Describable) error
+	//
+	// The dependency must be either a [Descriptor] or a [Describable].
+	AppendReference(dependency any) error
 }
 
 // ManifestService describes operations on image manifests.
@@ -69,8 +71,12 @@ type ManifestEnumerator interface {
 	Enumerate(ctx context.Context, ingester func(digest.Digest) error) error
 }
 
-// Describable is an interface for descriptors
+// Describable is an interface for descriptors.
+//
+// Implementations of Describable are generally objects which can be
+// described, not simply descriptors.
 type Describable interface {
+	// Descriptor returns the descriptor.
 	Descriptor() Descriptor
 }
 

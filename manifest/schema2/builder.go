@@ -2,6 +2,7 @@ package schema2
 
 import (
 	"context"
+	"errors"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/opencontainers/go-digest"
@@ -74,8 +75,20 @@ func (mb *builder) Build(ctx context.Context) (distribution.Manifest, error) {
 }
 
 // AppendReference adds a reference to the current ManifestBuilder.
-func (mb *builder) AppendReference(d distribution.Describable) error {
-	mb.dependencies = append(mb.dependencies, d.Descriptor())
+//
+// The reference must be either a [distribution.Descriptor] or a
+// [distribution.Describable].
+func (mb *builder) AppendReference(d any) error {
+	var descriptor distribution.Descriptor
+	if dt, ok := d.(distribution.Descriptor); ok {
+		descriptor = dt
+	} else if dt, ok := d.(distribution.Describable); ok {
+		descriptor = dt.Descriptor()
+	} else {
+		return errors.New("invalid type for reference: should be either a Descriptor or a Describable")
+	}
+
+	mb.dependencies = append(mb.dependencies, descriptor)
 	return nil
 }
 
