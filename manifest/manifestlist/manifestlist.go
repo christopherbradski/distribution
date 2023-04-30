@@ -8,6 +8,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -18,6 +19,9 @@ const (
 
 // SchemaVersion provides a pre-initialized version structure for this
 // packages version of the manifest.
+//
+// Deprecated: use [specs.Versioned] and set MediaType on the manifest
+// to [MediaTypeManifestList].
 var SchemaVersion = manifest.Versioned{
 	SchemaVersion: 2,
 	MediaType:     MediaTypeManifestList,
@@ -25,6 +29,9 @@ var SchemaVersion = manifest.Versioned{
 
 // OCISchemaVersion provides a pre-initialized version structure for this
 // packages OCIschema version of the manifest.
+//
+// Deprecated: use [specs.Versioned] and set MediaType on the manifest
+// to [v1.MediaTypeImageIndex].
 var OCISchemaVersion = manifest.Versioned{
 	SchemaVersion: 2,
 	MediaType:     v1.MediaTypeImageIndex,
@@ -117,7 +124,10 @@ type ManifestDescriptor struct {
 
 // ManifestList references manifests for various platforms.
 type ManifestList struct {
-	manifest.Versioned
+	specs.Versioned
+
+	// MediaType is the media type of this schema.
+	MediaType string `json:"mediaType,omitempty"`
 
 	// Manifests references a list of manifests
 	Manifests []ManifestDescriptor `json:"manifests"`
@@ -167,10 +177,8 @@ func FromDescriptors(descriptors []ManifestDescriptor) (*DeserializedManifestLis
 // FromDescriptorsWithMediaType is for testing purposes, it's useful to be able to specify the media type explicitly
 func FromDescriptorsWithMediaType(descriptors []ManifestDescriptor, mediaType string) (*DeserializedManifestList, error) {
 	m := ManifestList{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 2,
-			MediaType:     mediaType,
-		},
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: mediaType,
 	}
 
 	m.Manifests = make([]ManifestDescriptor, len(descriptors))
@@ -214,7 +222,7 @@ func (m *DeserializedManifestList) MarshalJSON() ([]byte, error) {
 
 // Payload returns the raw content of the manifest list. The contents can be
 // used to calculate the content identifier.
-func (m DeserializedManifestList) Payload() (string, []byte, error) {
+func (m *DeserializedManifestList) Payload() (string, []byte, error) {
 	var mediaType string
 	if m.MediaType == "" {
 		mediaType = v1.MediaTypeImageIndex

@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 type diffID digest.Digest
@@ -202,9 +202,7 @@ func (mb *configManifestBuilder) Build(ctx context.Context) (m distribution.Mani
 	}
 
 	mfst := Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
+		Versioned:    specs.Versioned{SchemaVersion: 1},
 		Name:         mb.ref.Name(),
 		Tag:          tag,
 		Architecture: img.Architecture,

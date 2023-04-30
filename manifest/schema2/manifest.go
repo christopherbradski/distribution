@@ -8,6 +8,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 const (
@@ -33,11 +34,19 @@ const (
 	MediaTypeUncompressedLayer = "application/vnd.docker.image.rootfs.diff.tar"
 )
 
+const (
+	defaultSchemaVersion = 2
+	defaultMediaType     = MediaTypeManifest
+)
+
 // SchemaVersion provides a pre-initialized version structure for this
 // packages version of the manifest.
+//
+// Deprecated: use [specs.Versioned] and set MediaType on the manifest
+// to [MediaTypeManifest].
 var SchemaVersion = manifest.Versioned{
-	SchemaVersion: 2,
-	MediaType:     MediaTypeManifest,
+	SchemaVersion: defaultSchemaVersion,
+	MediaType:     defaultMediaType,
 }
 
 func init() {
@@ -49,9 +58,9 @@ func init() {
 		}
 
 		dgst := digest.FromBytes(b)
-		return m, distribution.Descriptor{Digest: dgst, Size: int64(len(b)), MediaType: MediaTypeManifest}, err
+		return m, distribution.Descriptor{Digest: dgst, Size: int64(len(b)), MediaType: defaultMediaType}, err
 	}
-	err := distribution.RegisterManifestSchema(MediaTypeManifest, schema2Func)
+	err := distribution.RegisterManifestSchema(defaultMediaType, schema2Func)
 	if err != nil {
 		panic(fmt.Sprintf("Unable to register manifest: %s", err))
 	}
@@ -59,7 +68,10 @@ func init() {
 
 // Manifest defines a schema2 manifest.
 type Manifest struct {
-	manifest.Versioned
+	specs.Versioned
+
+	// MediaType is the media type of this schema.
+	MediaType string `json:"mediaType,omitempty"`
 
 	// Config references the image configuration as a blob.
 	Config distribution.Descriptor `json:"config"`
@@ -114,9 +126,9 @@ func (m *DeserializedManifest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 
-	if mfst.MediaType != MediaTypeManifest {
+	if mfst.MediaType != defaultMediaType {
 		return fmt.Errorf("mediaType in manifest should be '%s' not '%s'",
-			MediaTypeManifest, mfst.MediaType)
+			defaultMediaType, mfst.MediaType)
 	}
 
 	m.Manifest = mfst

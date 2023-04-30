@@ -4,17 +4,15 @@ import (
 	"testing"
 
 	"github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 func makeSignedManifest(t *testing.T, pk libtrust.PrivateKey, refs []Reference) *SignedManifest {
 	u := &Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
+		Versioned:    specs.Versioned{SchemaVersion: 1},
 		Name:         "foo/bar",
 		Tag:          "latest",
 		Architecture: "amd64",
