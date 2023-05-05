@@ -7,7 +7,6 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/storage"
@@ -126,11 +125,9 @@ func checkExerciseRepository(t *testing.T, repository distribution.Repository, r
 	// todo: change this to use Builder
 
 	m := schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: repository.Named().Name(),
-		Tag:  tag,
+		Versioned: schema1.SchemaVersion,
+		Name:      repository.Named().Name(),
+		Tag:       tag,
 	}
 
 	var blobDigests []digest.Digest

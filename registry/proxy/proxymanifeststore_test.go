@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/client/auth"
@@ -152,11 +151,9 @@ func newManifestStoreTestEnv(t *testing.T, name, tag string) *manifestStoreTestE
 
 func populateRepo(ctx context.Context, t *testing.T, repository distribution.Repository, name, tag string) (digest.Digest, error) {
 	m := schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: name,
-		Tag:  tag,
+		Versioned: schema1.SchemaVersion,
+		Name:      name,
+		Tag:       tag,
 	}
 
 	for i := 0; i < 2; i++ {

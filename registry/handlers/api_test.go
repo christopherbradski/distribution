@@ -21,7 +21,6 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/configuration"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/manifest/schema2"
@@ -35,6 +34,7 @@ import (
 	"github.com/docker/libtrust"
 	"github.com/gorilla/handlers"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 var headerConfig = http.Header{
@@ -1279,11 +1279,9 @@ func testManifestAPISchema1(t *testing.T, env *testEnv, imageName reference.Name
 	// --------------------------------
 	// Attempt to push unsigned manifest with missing layers
 	unsignedManifest := &schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: imageName.Name(),
-		Tag:  tag,
+		Versioned: schema1.SchemaVersion,
+		Name:      imageName.Name(),
+		Tag:       tag,
 		FSLayers: []schema1.FSLayer{
 			{
 				BlobSum: "asdf",
@@ -1598,10 +1596,8 @@ func testManifestAPISchema2(t *testing.T, env *testEnv, imageName reference.Name
 	// --------------------------------
 	// Attempt to push manifest with missing config and missing layers
 	manifest := &schema2.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 2,
-			MediaType:     schema2.MediaTypeManifest,
-		},
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: schema2.MediaTypeManifest,
 		Config: distribution.Descriptor{
 			Digest:    "sha256:1a9ec845ee94c202b2d5da74a24f0ed2058318bfa9879fa541efaecba272e86b",
 			Size:      3253,
@@ -1921,10 +1917,8 @@ func testManifestAPIManifestList(t *testing.T, env *testEnv, args manifestArgs) 
 	// --------------------------------
 	// Attempt to push manifest list that refers to an unknown manifest
 	manifestList := &manifestlist.ManifestList{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 2,
-			MediaType:     manifestlist.MediaTypeManifestList,
-		},
+		Versioned: specs.Versioned{SchemaVersion: 2},
+		MediaType: manifestlist.MediaTypeManifestList,
 		Manifests: []manifestlist.ManifestDescriptor{
 			{
 				Descriptor: distribution.Descriptor{
@@ -2711,11 +2705,9 @@ func createRepository(env *testEnv, t *testing.T, imageName string, tag string) 
 	}
 
 	unsignedManifest := &schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: imageName,
-		Tag:  tag,
+		Versioned: schema1.SchemaVersion,
+		Name:      imageName,
+		Tag:       tag,
 		FSLayers: []schema1.FSLayer{
 			{
 				BlobSum: "asdf",
@@ -2785,13 +2777,11 @@ func TestRegistryAsCacheMutationAPIs(t *testing.T) {
 
 	// Manifest upload
 	m := &schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name:     imageName.Name(),
-		Tag:      tag,
-		FSLayers: []schema1.FSLayer{},
-		History:  []schema1.History{},
+		Versioned: schema1.SchemaVersion,
+		Name:      imageName.Name(),
+		Tag:       tag,
+		FSLayers:  []schema1.FSLayer{},
+		History:   []schema1.History{},
 	}
 
 	sm, err := schema1.Sign(m, env.pk)

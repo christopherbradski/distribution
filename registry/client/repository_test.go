@@ -18,7 +18,6 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/schema1"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/distribution/distribution/v3/registry/api/errcode"
@@ -934,9 +933,7 @@ func newRandomSchemaV1Manifest(name reference.Named, tag string, blobCount int) 
 		Architecture: "x86",
 		FSLayers:     blobs,
 		History:      history,
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
+		Versioned:    schema1.SchemaVersion,
 	}
 
 	pk, err := libtrust.GenerateECP256PrivateKey()

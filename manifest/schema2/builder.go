@@ -2,9 +2,11 @@ package schema2
 
 import (
 	"context"
+	"errors"
 
 	"github.com/distribution/distribution/v3"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 // builder is a type for constructing manifests.
@@ -40,7 +42,8 @@ func NewManifestBuilder(bs distribution.BlobService, configMediaType string, con
 // Build produces a final manifest from the given references.
 func (mb *builder) Build(ctx context.Context) (distribution.Manifest, error) {
 	m := Manifest{
-		Versioned: SchemaVersion,
+		Versioned: specs.Versioned{SchemaVersion: defaultSchemaVersion},
+		MediaType: defaultMediaType,
 		Layers:    make([]distribution.Descriptor, len(mb.dependencies)),
 	}
 	copy(m.Layers, mb.dependencies)
@@ -74,8 +77,20 @@ func (mb *builder) Build(ctx context.Context) (distribution.Manifest, error) {
 }
 
 // AppendReference adds a reference to the current ManifestBuilder.
-func (mb *builder) AppendReference(d distribution.Describable) error {
-	mb.dependencies = append(mb.dependencies, d.Descriptor())
+//
+// The reference must be either a [distribution.Descriptor] or a
+// [distribution.Describable].
+func (mb *builder) AppendReference(d any) error {
+	var descriptor distribution.Descriptor
+	if dt, ok := d.(distribution.Descriptor); ok {
+		descriptor = dt
+	} else if dt, ok := d.(distribution.Describable); ok {
+		descriptor = dt.Descriptor()
+	} else {
+		return errors.New("invalid type for reference: should be either a Descriptor or a Describable")
+	}
+
+	mb.dependencies = append(mb.dependencies, descriptor)
 	return nil
 }
 
