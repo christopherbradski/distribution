@@ -13,9 +13,11 @@ import (
 
 // manifestListHandler is a ManifestHandler that covers schema2 manifest lists.
 type manifestListHandler struct {
-	repository distribution.Repository
-	blobStore  distribution.BlobStore
-	ctx        context.Context
+	repository                   distribution.Repository
+	blobStore                    distribution.BlobStore
+	ctx                          context.Context
+	validateImagesExist          bool
+	validateImagesExistPlatforms []platform // [] = All platforms
 }
 
 var _ ManifestHandler = &manifestListHandler{}
@@ -74,7 +76,7 @@ func (ms *manifestListHandler) Put(ctx context.Context, manifestList distributio
 func (ms *manifestListHandler) verifyManifest(ctx context.Context, mnfst distribution.Manifest, skipDependencyVerification bool) error {
 	var errs distribution.ErrManifestVerification
 
-	if !skipDependencyVerification {
+	if ms.validateImagesExist && !skipDependencyVerification {
 		// This manifest service is different from the blob service
 		// returned by Blob. It uses a linked blob store to ensure that
 		// only manifests are accessible.
@@ -85,6 +87,10 @@ func (ms *manifestListHandler) verifyManifest(ctx context.Context, mnfst distrib
 		}
 
 		for _, manifestDescriptor := range mnfst.References() {
+			if !ms.platformMustExist(manifestDescriptor) {
+				continue
+			}
+
 			exists, err := manifestService.Exists(ctx, manifestDescriptor.Digest)
 			if err != nil && err != distribution.ErrBlobUnknown {
 				errs = append(errs, err)
@@ -100,4 +106,21 @@ func (ms *manifestListHandler) verifyManifest(ctx context.Context, mnfst distrib
 	}
 
 	return nil
+}
+
+func (ms *manifestListHandler) platformMustExist(descriptor distribution.Descriptor) bool {
+	if len(ms.validateImagesExistPlatforms) == 0 {
+		return true
+	}
+
+	imagePlatform := descriptor.Platform
+
+	for _, platform := range ms.validateImagesExistPlatforms {
+		if imagePlatform.Architecture == platform.architecture &&
+			imagePlatform.OS == platform.os {
+			return true
+		}
+	}
+
+	return false
 }

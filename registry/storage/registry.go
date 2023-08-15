@@ -20,14 +20,24 @@ type registry struct {
 	deleteEnabled                bool
 	resumableDigestEnabled       bool
 	blobDescriptorServiceFactory distribution.BlobDescriptorServiceFactory
-	manifestURLs                 manifestURLs
 	driver                       storagedriver.StorageDriver
+
+	// Validation
+	manifestURLs                           manifestURLs
+	validateImageIndexImagesExist          bool
+	validateImageIndexImagesExistPlatforms []platform // [] = All platforms
 }
 
 // manifestURLs holds regular expressions for controlling manifest URL whitelisting
 type manifestURLs struct {
 	allow *regexp.Regexp
 	deny  *regexp.Regexp
+}
+
+// platform represents a platform to validate exists in the
+type platform struct {
+	architecture string
+	os           string
 }
 
 // RegistryOption is the type used for functional options for NewRegistry.
@@ -66,6 +76,28 @@ func ManifestURLsAllowRegexp(r *regexp.Regexp) RegistryOption {
 func ManifestURLsDenyRegexp(r *regexp.Regexp) RegistryOption {
 	return func(registry *registry) error {
 		registry.manifestURLs.deny = r
+		return nil
+	}
+}
+
+// EnableValidateImageIndexImagesExist is a functional option for NewRegistry. It enables
+// validation that references exist before an image index is accepted.
+func EnableValidateImageIndexImagesExist(registry *registry) error {
+	registry.validateImageIndexImagesExist = true
+	return nil
+}
+
+// AddValidateImageIndexImagesExistPlatform returns a functional option for NewRegistry.
+// It adds a platform to check for existence before an image index is accepted.
+func AddValidateImageIndexImagesExistPlatform(architecture string, os string) RegistryOption {
+	return func(registry *registry) error {
+		registry.validateImageIndexImagesExistPlatforms = append(
+			registry.validateImageIndexImagesExistPlatforms,
+			platform{
+				architecture: architecture,
+				os:           os,
+			},
+		)
 		return nil
 	}
 }
@@ -222,9 +254,11 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 	}
 
 	manifestListHandler := &manifestListHandler{
-		ctx:        ctx,
-		repository: repo,
-		blobStore:  blobStore,
+		ctx:                          ctx,
+		repository:                   repo,
+		blobStore:                    blobStore,
+		validateImagesExist:          repo.validateImageIndexImagesExist,
+		validateImagesExistPlatforms: repo.validateImageIndexImagesExistPlatforms,
 	}
 
 	ms := &manifestStore{

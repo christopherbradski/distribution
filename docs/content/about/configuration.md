@@ -284,6 +284,11 @@ validation:
         - ^https?://([^/]+\.)*example\.com/
       deny:
         - ^https?://www\.example\.com/
+    imageindex:
+      platformsexist: Selected
+      platforms:
+      - architecture: amd64
+        os: linux
 ```
 
 In some instances a configuration option is **optional** but it contains child
@@ -1122,13 +1127,13 @@ username (such as `batman`) and the password for that username.
 
 ```yaml
 validation:
-  manifests:
-    urls:
-      allow:
-        - ^https?://([^/]+\.)*example\.com/
-      deny:
-        - ^https?://www\.example\.com/
+  disabled: false
 ```
+
+Use these settings to configure what validation the registry performs on content.
+
+Validation is performed when content is uploaded to the registry. Changing these
+settings will not validate content that has already been accepting into the registry.
 
 ### `disabled`
 
@@ -1142,6 +1147,16 @@ Use the `manifests` subsection to configure validation of manifests. If
 
 #### `urls`
 
+```yaml
+validation:
+  manifests:
+    urls:
+      allow:
+        - ^https?://([^/]+\.)*example\.com/
+      deny:
+        - ^https?://www\.example\.com/
+```
+
 The `allow` and `deny` options are each a list of
 [regular expressions](https://pkg.go.dev/regexp/syntax) that restrict the URLs in
 pushed manifests.
@@ -1154,6 +1169,53 @@ one of the `allow` regular expressions **and** one of the following holds:
 1. `deny` is unset.
 2. `deny` is set but no URLs within the manifest match any of the `deny` regular
    expressions.
+
+### `imageindexes`
+
+By default the registry will validate that all platform images exist when an image
+index is uploaded to the registry. Disabling this validatation is experimental
+because other tooling that uses the registry may expect the image index to be complete.
+
+validation:
+  imageindexes:
+    platformsexist: [All|None|Selected]
+    selectedplatforms:
+    - os: linux
+      architecture: amd64
+
+Use these settings to configure what validation the registry performs on image
+index manifests uploaded to the registry.
+
+#### `platformsexist`
+
+Set `platformexist` to `all` (the default) to validate all platform images exist.
+The registry will validate that the images referenced by the index exist in the
+registry before accepting the image index.
+
+Set `platformsexist` to `none` to disable all validation that images exist when an
+image index manifest is uploaded. This allows image lists to be uploaded to the
+registry without their associated images. This setting is experimental because
+other tooling that uses the registry may expect the image index to be complete.
+
+Set `platformsexist` to `selected` to selectively validate the existence of platforms
+within image index manifests. This setting is experimental because other tooling
+that uses the registry may expect the image index to be complete.
+
+#### `selectedplatforms`
+
+When `platformsexist` is set to `selected`, set `selectedplatforms` to an array of
+platforms to validate. If a platform is included in this the array and in the images
+contained within an index, the registry will validate that the platform specific image
+exists in the registry before accepting the index. The registry will not validate the
+existence of platform specific images in the index that do not appear in the
+`selectedplatforms` array.
+
+This parameter does not validate that the configured platforms are included in every
+index. If an image index does not include one of the platform specific images configured
+in the `selectedplatforms` array, it may still be accepted by the registry.
+
+Each platform is a map with two keys, `os` and `architecture`, as defined in the
+[OCI Image Index specification](https://github.com/opencontainers/image-spec/blob/main/image-index.md#image-index-property-descriptions).
 
 ## Example: Development configuration
 
