@@ -5,12 +5,12 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/context"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/schema1" //nolint:staticcheck // Ignore SA1019: "github.com/distribution/distribution/v3/manifest/schema1" is deprecated, as it's used for backward compatibility.
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 // MakeManifestList constructs a manifest list out of a list of manifest digests
@@ -46,11 +46,9 @@ func MakeManifestList(blobstatter distribution.BlobStatter, manifestDigests []di
 // Use Docker Image Manifest v2, Schema 2, or the OCI Image Specification.
 func MakeSchema1Manifest(digests []digest.Digest) (*schema1.SignedManifest, error) {
 	mfst := schema1.Manifest{
-		Versioned: manifest.Versioned{
-			SchemaVersion: 1,
-		},
-		Name: "who",
-		Tag:  "cares",
+		Versioned: specs.Versioned{SchemaVersion: 1},
+		Name:      "who",
+		Tag:       "cares",
 	}
 
 	for _, d := range digests {

@@ -8,11 +8,15 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
 // SchemaVersion provides a pre-initialized version structure for OCI Image
-// Manifests
+// Manifests.
+//
+// Deprecated: use [specs.Versioned] and set MediaType on the manifest
+// to [v1.MediaTypeImageManifest].
 var SchemaVersion = manifest.Versioned{
 	SchemaVersion: 2,
 	MediaType:     v1.MediaTypeImageManifest,
@@ -40,7 +44,10 @@ func init() {
 
 // Manifest defines a ocischema manifest.
 type Manifest struct {
-	manifest.Versioned
+	specs.Versioned
+
+	// MediaType is the media type of this schema.
+	MediaType string `json:"mediaType,omitempty"`
 
 	// Config references the image configuration as a blob.
 	Config distribution.Descriptor `json:"config"`
@@ -120,7 +127,7 @@ func (m *DeserializedManifest) MarshalJSON() ([]byte, error) {
 
 // Payload returns the raw content of the manifest. The contents can be used to
 // calculate the content identifier.
-func (m DeserializedManifest) Payload() (string, []byte, error) {
+func (m *DeserializedManifest) Payload() (string, []byte, error) {
 	return v1.MediaTypeImageManifest, m.canonical, nil
 }
 

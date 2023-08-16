@@ -6,10 +6,10 @@ import (
 	"fmt"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/distribution/distribution/v3/reference"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 // referenceManifestBuilder is a type for constructing manifests from schema1
@@ -32,9 +32,7 @@ func NewReferenceManifestBuilder(pk libtrust.PrivateKey, ref reference.Named, ar
 
 	return &referenceManifestBuilder{
 		Manifest: Manifest{
-			Versioned: manifest.Versioned{
-				SchemaVersion: 1,
-			},
+			Versioned:    specs.Versioned{SchemaVersion: 1},
 			Name:         ref.Name(),
 			Tag:          tag,
 			Architecture: architecture,

@@ -8,6 +8,7 @@ import (
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 )
 
@@ -47,7 +48,10 @@ func init() {
 
 // ImageIndex references manifests for various platforms.
 type ImageIndex struct {
-	manifest.Versioned
+	specs.Versioned
+
+	// MediaType is the media type of this schema.
+	MediaType string `json:"mediaType,omitempty"`
 
 	// Manifests references a list of manifests
 	Manifests []distribution.Descriptor `json:"manifests"`
@@ -83,10 +87,8 @@ func FromDescriptors(descriptors []distribution.Descriptor, annotations map[stri
 // fromDescriptorsWithMediaType is for testing purposes, it's useful to be able to specify the media type explicitly
 func fromDescriptorsWithMediaType(descriptors []distribution.Descriptor, annotations map[string]string, mediaType string) (_ *DeserializedImageIndex, err error) {
 	m := ImageIndex{
-		Versioned: manifest.Versioned{
-			SchemaVersion: IndexSchemaVersion.SchemaVersion,
-			MediaType:     mediaType,
-		},
+		Versioned:   specs.Versioned{SchemaVersion: 2},
+		MediaType:   mediaType,
 		Annotations: annotations,
 	}
 

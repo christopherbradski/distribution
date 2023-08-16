@@ -11,9 +11,9 @@ import (
 	"fmt"
 
 	"github.com/distribution/distribution/v3"
-	"github.com/distribution/distribution/v3/manifest"
 	"github.com/docker/libtrust"
 	"github.com/opencontainers/go-digest"
+	"github.com/opencontainers/image-spec/specs-go"
 )
 
 // MediaTypeManifest specifies the mediaType for the current version. Note
@@ -40,9 +40,7 @@ const MediaTypeManifestLayer = "application/vnd.docker.container.image.rootfs.di
 //
 // Deprecated: Docker Image Manifest v2, Schema 1 is deprecated since 2015.
 // Use Docker Image Manifest v2, Schema 2, or the OCI Image Specification.
-var SchemaVersion = manifest.Versioned{
-	SchemaVersion: 1,
-}
+var SchemaVersion = specs.Versioned{SchemaVersion: 1}
 
 func init() {
 	schema1Func := func(b []byte) (distribution.Manifest, distribution.Descriptor, error) {
@@ -97,7 +95,7 @@ type History struct {
 // Deprecated: Docker Image Manifest v2, Schema 1 is deprecated since 2015.
 // Use Docker Image Manifest v2, Schema 2, or the OCI Image Specification.
 type Manifest struct {
-	manifest.Versioned
+	specs.Versioned
 
 	// Name is the name of the image's repository
 	Name string `json:"name"`
