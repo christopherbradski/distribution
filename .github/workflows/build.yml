@@ -49,8 +49,8 @@ jobs:
 
   build:
     permissions:
-      id-token: 'write' # to write to GHCR
-      packages: 'write' # to write to GHCR
+      id-token: write # to write to GHCR
+      packages: write # to write to GHCR
 
     runs-on: ubuntu-latest
     needs:
@@ -95,6 +95,7 @@ jobs:
         uses: docker/bake-action@v4
         with:
           targets: artifact-all
+          provenance: false
       -
         name: Move artifacts
         run: |
