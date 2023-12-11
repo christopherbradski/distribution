@@ -235,10 +235,10 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 			}
 		}
 
-		switch config.Validation.ImageIndexes.PlatformsExist {
-		case "selected":
+		switch config.Validation.ImageIndexes.Platforms {
+		case "list":
 			options = append(options, storage.EnableValidateImageIndexImagesExist)
-			for _, platform := range config.Validation.ImageIndexes.SelectedPlatforms {
+			for _, platform := range config.Validation.ImageIndexes.PlatformList {
 				options = append(options, storage.AddValidateImageIndexImagesExistPlatform(platform.Architecture, platform.OS))
 			}
 			fallthrough

@@ -146,7 +146,7 @@ var configStruct = Configuration{
 	},
 	Validation: Validation{
 		ImageIndexes: ValidationImageIndexes{
-			PlatformsExist: "none",
+			Platforms: "none",
 		},
 	},
 }
@@ -204,7 +204,7 @@ redis:
   writetimeout: 10ms
 validation:
   imageindexes:
-    platformsexist: none
+    platforms: none
 `
 
 // inmemoryConfigYamlV0_1 is a Version 0.1 yaml document specifying an inmemory
@@ -236,7 +236,7 @@ http:
     X-Content-Type-Options: [nosniff]
 validation:
   imageindexes:
-    platformsexist: none
+    platforms: none
 `
 
 type ConfigSuite struct {
@@ -295,7 +295,7 @@ func (suite *ConfigSuite) TestParseIncomplete(c *check.C) {
 	suite.expectedConfig.Notifications = Notifications{}
 	suite.expectedConfig.HTTP.Headers = nil
 	suite.expectedConfig.Redis = Redis{}
-	suite.expectedConfig.Validation.ImageIndexes.PlatformsExist = ""
+	suite.expectedConfig.Validation.ImageIndexes.Platforms = ""
 
 	// Note: this also tests that REGISTRY_STORAGE and
 	// REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY can be used together

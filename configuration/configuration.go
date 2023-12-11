@@ -644,34 +644,34 @@ type ValidationManifests struct {
 }
 
 type ValidationImageIndexes struct {
-	// PlatformsExist configures the validation applies to the platform images included in an image index
-	PlatformsExist PlatformsExist `yaml:"platformsexist"`
-	// SelectedPlatforms filters the set of platforms to validate for image existence.
-	SelectedPlatforms []Platform `yaml:"selectedplatforms,omitempty"`
+	// Platforms configures the validation applies to the platform images included in an image index
+	Platforms Platforms `yaml:"platforms"`
+	// PlatformList filters the set of platforms to validate for image existence.
+	PlatformList []Platform `yaml:"platformlist,omitempty"`
 }
 
-// PlatformsExist configures the validation applies to the platform images included in an image index
-// This can be all, none, or selected
-type PlatformsExist string
+// Platforms configures the validation applies to the platform images included in an image index
+// This can be all, none, or list
+type Platforms string
 
 // UnmarshalYAML implements the yaml.Umarshaler interface
-// Unmarshals a string into a PlatformsExist option, lowercasing the string and validating that it represents a
+// Unmarshals a string into a Platforms option, lowercasing the string and validating that it represents a
 // valid option
-func (platformsexist *PlatformsExist) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	var platformsExistString string
-	err := unmarshal(&platformsExistString)
+func (platforms *Platforms) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	var platformsString string
+	err := unmarshal(&platformsString)
 	if err != nil {
 		return err
 	}
 
-	platformsExistString = strings.ToLower(platformsExistString)
-	switch platformsExistString {
-	case "all", "none", "selected":
+	platformsString = strings.ToLower(platformsString)
+	switch platformsString {
+	case "all", "none", "list":
 	default:
-		return fmt.Errorf("invalid platformsexist option %s Must be one of [all, none, selected]", platformsExistString)
+		return fmt.Errorf("invalid platforms option %s Must be one of [all, none, list]", platformsString)
 	}
 
-	*platformsexist = PlatformsExist(platformsExistString)
+	*platforms = Platforms(platformsString)
 	return nil
 }
 

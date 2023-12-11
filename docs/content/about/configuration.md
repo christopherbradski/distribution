@@ -285,8 +285,8 @@ validation:
       deny:
         - ^https?://www\.example\.com/
     imageindex:
-      platformsexist: Selected
-      platforms:
+      platforms: List
+      platformlist:
       - architecture: amd64
         os: linux
 ```
@@ -1178,41 +1178,41 @@ because other tooling that uses the registry may expect the image index to be co
 
 validation:
   imageindexes:
-    platformsexist: [All|None|Selected]
-    selectedplatforms:
+    platforms: [All|None|List]
+    platformlist:
     - os: linux
       architecture: amd64
 
 Use these settings to configure what validation the registry performs on image
 index manifests uploaded to the registry.
 
-#### `platformsexist`
+#### `platforms`
 
 Set `platformexist` to `all` (the default) to validate all platform images exist.
 The registry will validate that the images referenced by the index exist in the
 registry before accepting the image index.
 
-Set `platformsexist` to `none` to disable all validation that images exist when an
+Set `platforms` to `none` to disable all validation that images exist when an
 image index manifest is uploaded. This allows image lists to be uploaded to the
 registry without their associated images. This setting is experimental because
 other tooling that uses the registry may expect the image index to be complete.
 
-Set `platformsexist` to `selected` to selectively validate the existence of platforms
+Set `platforms` to `list` to selectively validate the existence of platforms
 within image index manifests. This setting is experimental because other tooling
 that uses the registry may expect the image index to be complete.
 
-#### `selectedplatforms`
+#### `platformlist`
 
-When `platformsexist` is set to `selected`, set `selectedplatforms` to an array of
+When `platforms` is set to `list`, set `platformlist` to an array of
 platforms to validate. If a platform is included in this the array and in the images
 contained within an index, the registry will validate that the platform specific image
 exists in the registry before accepting the index. The registry will not validate the
 existence of platform specific images in the index that do not appear in the
-`selectedplatforms` array.
+`platformlist` array.
 
 This parameter does not validate that the configured platforms are included in every
 index. If an image index does not include one of the platform specific images configured
-in the `selectedplatforms` array, it may still be accepted by the registry.
+in the `platformlist` array, it may still be accepted by the registry.
 
 Each platform is a map with two keys, `os` and `architecture`, as defined in the
 [OCI Image Index specification](https://github.com/opencontainers/image-spec/blob/main/image-index.md#image-index-property-descriptions).
