@@ -284,7 +284,7 @@ validation:
         - ^https?://([^/]+\.)*example\.com/
       deny:
         - ^https?://www\.example\.com/
-    imageindex:
+    indexes:
       platforms: List
       platformlist:
       - architecture: amd64
@@ -1170,23 +1170,24 @@ one of the `allow` regular expressions **and** one of the following holds:
 2. `deny` is set but no URLs within the manifest match any of the `deny` regular
    expressions.
 
-### `imageindexes`
+#### `indexes`
 
 By default the registry will validate that all platform images exist when an image
 index is uploaded to the registry. Disabling this validatation is experimental
 because other tooling that uses the registry may expect the image index to be complete.
 
 validation:
-  imageindexes:
-    platforms: [All|None|List]
-    platformlist:
-    - os: linux
-      architecture: amd64
+  manifests:
+    indexes:
+      platforms: [All|None|List]
+      platformlist:
+      - os: linux
+        architecture: amd64
 
 Use these settings to configure what validation the registry performs on image
 index manifests uploaded to the registry.
 
-#### `platforms`
+##### `platforms`
 
 Set `platformexist` to `all` (the default) to validate all platform images exist.
 The registry will validate that the images referenced by the index exist in the
@@ -1201,7 +1202,7 @@ Set `platforms` to `list` to selectively validate the existence of platforms
 within image index manifests. This setting is experimental because other tooling
 that uses the registry may expect the image index to be complete.
 
-#### `platformlist`
+##### `platformlist`
 
 When `platforms` is set to `list`, set `platformlist` to an array of
 platforms to validate. If a platform is included in this the array and in the images

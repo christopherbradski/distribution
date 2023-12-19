@@ -627,8 +627,6 @@ type Validation struct {
 	Disabled bool `yaml:"disabled,omitempty"`
 	// Manifests configures manifest validation.
 	Manifests ValidationManifests `yaml:"manifests,omitempty"`
-	// ImageIndexes configures validation of image indexes
-	ImageIndexes ValidationImageIndexes `yaml:"imageindexes,omitempty"`
 }
 
 type ValidationManifests struct {
@@ -641,9 +639,11 @@ type ValidationManifests struct {
 		// that URLs in pushed manifests must not match.
 		Deny []string `yaml:"deny,omitempty"`
 	} `yaml:"urls,omitempty"`
+	// ImageIndexes configures validation of image indexes
+	Indexes ValidationIndexes `yaml:"indexes,omitempty"`
 }
 
-type ValidationImageIndexes struct {
+type ValidationIndexes struct {
 	// Platforms configures the validation applies to the platform images included in an image index
 	Platforms Platforms `yaml:"platforms"`
 	// PlatformList filters the set of platforms to validate for image existence.
