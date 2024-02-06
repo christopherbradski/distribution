@@ -10,6 +10,7 @@ import (
 
 	"github.com/distribution/distribution/v3"
 	"github.com/distribution/distribution/v3/manifest"
+	"github.com/distribution/distribution/v3/manifest/manifestlist"
 	"github.com/distribution/distribution/v3/manifest/ocischema"
 	"github.com/distribution/distribution/v3/manifest/schema2"
 	"github.com/distribution/distribution/v3/registry/storage/cache/memory"
@@ -338,7 +339,7 @@ func testOCIManifestStorage(t *testing.T, testname string, includeMediaTypes boo
 	}
 
 	mfstDescriptors := []distribution.Descriptor{
-		createManifestDescriptor(t, testname, mfst, platformSpec),
+		createOciManifestDescriptor(t, testname, mfst, platformSpec),
 	}
 
 	imageIndex, err := ociIndexFromDesriptorsWithMediaType(mfstDescriptors, indexMediaType)
@@ -456,16 +457,16 @@ func TestIndexManifestStorageWithoutImageCheck(t *testing.T) {
 
 	// create an image index
 
-	platformSpec := &v1.Platform{
+	ociPlatformSpec := &v1.Platform{
 		Architecture: "atari2600",
 		OS:           "CP/M",
 	}
 
-	manifestDescriptors := []distribution.Descriptor{
-		createManifestDescriptor(t, t.Name(), manifest, platformSpec),
+	ociManifestDescriptors := []distribution.Descriptor{
+		createOciManifestDescriptor(t, t.Name(), manifest, ociPlatformSpec),
 	}
 
-	imageIndex, err := ociIndexFromDesriptorsWithMediaType(manifestDescriptors, indexMediaType)
+	imageIndex, err := ociIndexFromDesriptorsWithMediaType(ociManifestDescriptors, indexMediaType)
 	if err != nil {
 		t.Fatalf("unexpected error creating image index: %v", err)
 	}
@@ -474,7 +475,30 @@ func TestIndexManifestStorageWithoutImageCheck(t *testing.T) {
 
 	_, err = ms.Put(ctx, imageIndex)
 	if err != nil {
-		t.Fatalf("unexpected error putting sparse image index: %v", err)
+		t.Fatalf("unexpected error putting sparse OCI image index: %v", err)
+	}
+
+	// same for a manifest list
+
+	listPlatformSpec := &manifestlist.PlatformSpec{
+		Architecture: "atari2600",
+		OS:           "CP/M",
+	}
+
+	listManifestDescriptors := []manifestlist.ManifestDescriptor{
+		createManifestListDescriptor(t, t.Name(), manifest, listPlatformSpec),
+	}
+
+	list, err := manifestlist.FromDescriptors(listManifestDescriptors)
+	if err != nil {
+		t.Fatalf("unexpected error creating manifest list: %v", err)
+	}
+
+	// We should be able to put the list without having put the image
+
+	_, err = ms.Put(ctx, list)
+	if err != nil {
+		t.Fatalf("unexpected error putting sparse manifest list: %v", err)
 	}
 }
 
@@ -526,9 +550,9 @@ func TestIndexManifestStorageWithSelectivePlatforms(t *testing.T) {
 	}
 
 	manifestDescriptors := []distribution.Descriptor{
-		createManifestDescriptor(t, t.Name(), amdManifest, amdPlatformSpec),
-		createManifestDescriptor(t, t.Name(), armManifest, armPlatformSpec),
-		createManifestDescriptor(t, t.Name(), atariManifest, atariPlatformSpec),
+		createOciManifestDescriptor(t, t.Name(), amdManifest, amdPlatformSpec),
+		createOciManifestDescriptor(t, t.Name(), armManifest, armPlatformSpec),
+		createOciManifestDescriptor(t, t.Name(), atariManifest, atariPlatformSpec),
 	}
 
 	imageIndex, err := ociIndexFromDesriptorsWithMediaType(manifestDescriptors, indexMediaType)
@@ -606,8 +630,8 @@ func createRandomImage(t *testing.T, testname string, imageMediaType string, blo
 	return builder.Build(ctx)
 }
 
-// createManifestDescriptor builds a manifest descriptor from a manifest and a platform descriptor
-func createManifestDescriptor(t *testing.T, testname string, manifest distribution.Manifest, platformSpec *v1.Platform) distribution.Descriptor {
+// createOciManifestDescriptor builds a manifest descriptor from a manifest and a platform descriptor
+func createOciManifestDescriptor(t *testing.T, testname string, manifest distribution.Manifest, platformSpec *v1.Platform) distribution.Descriptor {
 	manifestMediaType, manifestPayload, err := manifest.Payload()
 	if err != nil {
 		t.Fatalf("%s: unexpected error getting manifest payload: %v", testname, err)
@@ -619,6 +643,27 @@ func createManifestDescriptor(t *testing.T, testname string, manifest distributi
 		Size:      int64(len(manifestPayload)),
 		MediaType: manifestMediaType,
 		Platform: &v1.Platform{
+			Architecture: platformSpec.Architecture,
+			OS:           platformSpec.OS,
+		},
+	}
+}
+
+// createManifestListDescriptor builds a manifest descriptor from a manifest and a platform descriptor
+func createManifestListDescriptor(t *testing.T, testname string, manifest distribution.Manifest, platformSpec *manifestlist.PlatformSpec) manifestlist.ManifestDescriptor {
+	manifestMediaType, manifestPayload, err := manifest.Payload()
+	if err != nil {
+		t.Fatalf("%s: unexpected error getting manifest payload: %v", testname, err)
+	}
+	manifestDigest := digest.FromBytes(manifestPayload)
+
+	return manifestlist.ManifestDescriptor{
+		Descriptor: distribution.Descriptor{
+			Digest:    manifestDigest,
+			Size:      int64(len(manifestPayload)),
+			MediaType: manifestMediaType,
+		},
+		Platform: manifestlist.PlatformSpec{
 			Architecture: platformSpec.Architecture,
 			OS:           platformSpec.OS,
 		},

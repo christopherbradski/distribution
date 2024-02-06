@@ -23,15 +23,22 @@ type registry struct {
 	driver                       storagedriver.StorageDriver
 
 	// Validation
-	manifestURLs                           manifestURLs
-	validateImageIndexImagesExist          bool
-	validateImageIndexImagesExistPlatforms []platform // [] = All platforms
+	manifestURLs         manifestURLs
+	validateImageIndexes validateImageIndexes
 }
 
 // manifestURLs holds regular expressions for controlling manifest URL whitelisting
 type manifestURLs struct {
 	allow *regexp.Regexp
 	deny  *regexp.Regexp
+}
+
+// validateImageIndexImages holds configuration for validation of image indexes
+type validateImageIndexes struct {
+	// exist can be used to disable checking that platform images exist entirely. Default true.
+	imagesExist bool
+	// platforms can be used to only validate the existence of images for a set of platforms. The empty array means validate all platforms.
+	imagePlatforms []platform
 }
 
 // platform represents a platform to validate exists in the
@@ -83,7 +90,7 @@ func ManifestURLsDenyRegexp(r *regexp.Regexp) RegistryOption {
 // EnableValidateImageIndexImagesExist is a functional option for NewRegistry. It enables
 // validation that references exist before an image index is accepted.
 func EnableValidateImageIndexImagesExist(registry *registry) error {
-	registry.validateImageIndexImagesExist = true
+	registry.validateImageIndexes.imagesExist = true
 	return nil
 }
 
@@ -91,8 +98,8 @@ func EnableValidateImageIndexImagesExist(registry *registry) error {
 // It adds a platform to check for existence before an image index is accepted.
 func AddValidateImageIndexImagesExistPlatform(architecture string, os string) RegistryOption {
 	return func(registry *registry) error {
-		registry.validateImageIndexImagesExistPlatforms = append(
-			registry.validateImageIndexImagesExistPlatforms,
+		registry.validateImageIndexes.imagePlatforms = append(
+			registry.validateImageIndexes.imagePlatforms,
 			platform{
 				architecture: architecture,
 				os:           os,
@@ -254,11 +261,10 @@ func (repo *repository) Manifests(ctx context.Context, options ...distribution.M
 	}
 
 	manifestListHandler := &manifestListHandler{
-		ctx:                          ctx,
-		repository:                   repo,
-		blobStore:                    blobStore,
-		validateImagesExist:          repo.validateImageIndexImagesExist,
-		validateImagesExistPlatforms: repo.validateImageIndexImagesExistPlatforms,
+		ctx:                  ctx,
+		repository:           repo,
+		blobStore:            blobStore,
+		validateImageIndexes: repo.validateImageIndexes,
 	}
 
 	ms := &manifestStore{

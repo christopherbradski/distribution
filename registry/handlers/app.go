@@ -243,7 +243,7 @@ func NewApp(ctx context.Context, config *configuration.Configuration) *App {
 			}
 			fallthrough
 		case "none":
-			dcontext.GetLogger(app).Warnf("Image index completeness validation has been disabled, which is an experimental option because other container tooling might expect all image indexes to be complete")
+			dcontext.GetLogger(app).Warn("Image index completeness validation has been disabled, which is an experimental option because other container tooling might expect all image indexes to be complete")
 		case "all":
 			fallthrough
 		default:
