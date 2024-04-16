@@ -221,7 +221,7 @@ func setDirectoryURL(directoryurl string) *acme.Client {
 }
 
 // ListenAndServe runs the registry's HTTP server.
-func (registry *Registry) ListenAndServe() (err error) {
+func (registry *Registry) ListenAndServe() (retErr error) {
 	config := registry.config
 
 	ln, err := listener.NewListener(config.HTTP.Net, config.HTTP.Addr)
@@ -318,7 +318,7 @@ func (registry *Registry) ListenAndServe() (err error) {
 	}()
 	defer func(app *handlers.App) {
 		if exitErr := app.OnExit(); exitErr != nil {
-			err = errors.Join(err, exitErr)
+			retErr = errors.Join(retErr, exitErr)
 		}
 	}(registry.app)
 
