@@ -243,16 +243,15 @@ notifications:
         actions:
            - pull
 redis:
-  addr: localhost:6379
+  addrs: [localhost:6379]
   password: asecret
   db: 0
   dialtimeout: 10ms
   readtimeout: 10ms
   writetimeout: 10ms
-  pool:
-    maxidle: 16
-    maxactive: 64
-    idletimeout: 300s
+  maxidleconns: 16
+  poolsize: 64
+  connmaxidletime: 300s
   tls:
     enabled: false
 health:
@@ -977,16 +976,15 @@ The `events` structure configures the information provided in event notification
 
 ```yaml
 redis:
-  addr: localhost:6379
+  addrs: [localhost:6379]
   password: asecret
   db: 0
   dialtimeout: 10ms
   readtimeout: 10ms
   writetimeout: 10ms
-  pool:
-    maxidle: 16
-    maxactive: 64
-    idletimeout: 300s
+  maxidleconns: 16
+  poolsize: 64
+  connmaxidletime: 300s
   tls:
     enabled: false
 ```

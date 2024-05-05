@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/suite"
 	"gopkg.in/yaml.v2"
 )
@@ -133,20 +134,14 @@ var configStruct = Configuration{
 			Enabled: true,
 		},
 	},
-	Redis: Redis{
-		Addr:     "localhost:6379",
+	Redis: redis.UniversalOptions{
+		Addrs:     []string{"localhost:6379"},
 		Username: "alice",
 		Password: "123456",
 		DB:       1,
-		Pool: struct {
-			MaxIdle     int           `yaml:"maxidle,omitempty"`
-			MaxActive   int           `yaml:"maxactive,omitempty"`
-			IdleTimeout time.Duration `yaml:"idletimeout,omitempty"`
-		}{
-			MaxIdle:     16,
-			MaxActive:   64,
-			IdleTimeout: time.Second * 300,
-		},
+		MaxIdleConns: 16,
+		PoolSize: 64,
+		ConnMaxIdleTime: time.Second * 300,
 		DialTimeout:  time.Millisecond * 10,
 		ReadTimeout:  time.Millisecond * 10,
 		WriteTimeout: time.Millisecond * 10,
@@ -195,14 +190,13 @@ http:
   headers:
     X-Content-Type-Options: [nosniff]
 redis:
-  addr: localhost:6379
+  addrs: [localhost:6379]
   username: alice
   password: 123456
   db: 1
-  pool:
-    maxidle: 16
-    maxactive: 64
-    idletimeout: 300s
+  maxidleconns: 16
+  poolsize: 64
+  connmaxidletime: 300s
   dialtimeout: 10ms
   readtimeout: 10ms
   writetimeout: 10ms
@@ -274,7 +268,7 @@ func (suite *ConfigSuite) TestParseSimple() {
 func (suite *ConfigSuite) TestParseInmemory() {
 	suite.expectedConfig.Storage = Storage{"inmemory": Parameters{}}
 	suite.expectedConfig.Log.Fields = nil
-	suite.expectedConfig.Redis = Redis{}
+	suite.expectedConfig.Redis = redis.UniversalOptions{}
 
 	config, err := Parse(bytes.NewReader([]byte(inmemoryConfigYamlV0_1)))
 	suite.Require().NoError(err)
@@ -294,7 +288,7 @@ func (suite *ConfigSuite) TestParseIncomplete() {
 	suite.expectedConfig.Auth = Auth{"silly": Parameters{"realm": "silly"}}
 	suite.expectedConfig.Notifications = Notifications{}
 	suite.expectedConfig.HTTP.Headers = nil
-	suite.expectedConfig.Redis = Redis{}
+	suite.expectedConfig.Redis = redis.UniversalOptions{}
 
 	// Note: this also tests that REGISTRY_STORAGE and
 	// REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY can be used together
