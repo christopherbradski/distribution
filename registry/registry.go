@@ -221,7 +221,7 @@ func setDirectoryURL(directoryurl string) *acme.Client {
 }
 
 // ListenAndServe runs the registry's HTTP server.
-func (registry *Registry) ListenAndServe() (retErr error) {
+func (registry *Registry) ListenAndServe() error {
 	config := registry.config
 
 	ln, err := listener.NewListener(config.HTTP.Net, config.HTTP.Addr)
@@ -308,6 +308,10 @@ func (registry *Registry) ListenAndServe() (retErr error) {
 		dcontext.GetLogger(registry.app).Infof("listening on %v", ln.Addr())
 	}
 
+	if config.HTTP.DrainTimeout == 0 {
+		return registry.server.Serve(ln)
+	}
+
 	// setup channel to get notified on SIGTERM signal
 	signal.Notify(registry.quit, os.Interrupt, syscall.SIGTERM)
 	serveErr := make(chan error)
@@ -316,19 +320,11 @@ func (registry *Registry) ListenAndServe() (retErr error) {
 	go func() {
 		serveErr <- registry.server.Serve(ln)
 	}()
-	defer func(app *handlers.App) {
-		if exitErr := app.OnExit(); exitErr != nil {
-			retErr = errors.Join(retErr, exitErr)
-		}
-	}(registry.app)
 
 	select {
 	case err := <-serveErr:
 		return err
 	case <-registry.quit:
-		if config.HTTP.DrainTimeout == 0 {
-			return nil
-		}
 		dcontext.GetLogger(registry.app).Info("stopping server gracefully. Draining connections for ", config.HTTP.DrainTimeout)
 		// shutdown the server with a grace period of configured timeout
 		c, cancel := context.WithTimeout(context.Background(), config.HTTP.DrainTimeout)
@@ -337,9 +333,13 @@ func (registry *Registry) ListenAndServe() (retErr error) {
 	}
 }
 
-// Shutdown gracefully shuts down the registry's HTTP server.
+// Shutdown gracefully shuts down the registry's HTTP server and application object.
 func (registry *Registry) Shutdown(ctx context.Context) error {
-	return registry.server.Shutdown(ctx)
+	err := registry.server.Shutdown(ctx)
+	if appErr := registry.app.Shutdown(); appErr != nil {
+		err = errors.Join(err, appErr)
+	}
+	return err
 }
 
 func configureDebugServer(config *configuration.Configuration) {

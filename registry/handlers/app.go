@@ -430,8 +430,8 @@ func (app *App) RegisterHealthChecks(healthRegistries ...*health.Registry) {
 	}
 }
 
-// OnExit close the underlying registry
-func (app *App) OnExit() error {
+// Shutdown close the underlying registry
+func (app *App) Shutdown() error {
 	if r, ok := app.registry.(proxy.Closer); ok {
 		return r.Close()
 	}
